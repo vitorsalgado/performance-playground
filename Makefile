@@ -6,6 +6,18 @@
 
 export
 
+.PHONY: testci
+testci: ## run tests with a focus on ci
+	@go test -v -race ./... -coverpkg=./... -coverprofile=coverage.txt
+
+.PHONY: lint
+lint: ## run linters
+	@time golangci-lint run
+
+.PHONY: deps
+deps: ## dependencies
+	@go mod download
+
 ## -
 ## Misc
 ## --
