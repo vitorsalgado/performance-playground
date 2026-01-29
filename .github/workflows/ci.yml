@@ -15,6 +15,7 @@ concurrency:
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
   build:
@@ -34,9 +35,9 @@ jobs:
         run: make deps
 
       - name: Lint
-        uses: golangci/golangci-lint-action@v8
+        uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.1
+          version: v2.8.0
 
       - name: Test
         run: make testci
