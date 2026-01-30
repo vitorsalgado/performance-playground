@@ -6,6 +6,22 @@
 
 export
 
+.PHONY: up
+up: ## run everything
+	@docker-compose up --build --force-recreate
+
+.PHONY: down
+down: ## stop everything
+	@docker-compose down --volumes --remove-orphans
+
+.PHONY: run
+run: ## run the application
+	@go run ./cmd/exchange
+
+## --
+## Testing
+## --
+
 .PHONY: testci
 testci: ## run tests with a focus on ci
 	@go test -v -race ./... -coverpkg=./... -coverprofile=coverage.txt

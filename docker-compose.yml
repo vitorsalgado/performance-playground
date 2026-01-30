@@ -1,0 +1,62 @@
+version: '3.9'
+
+services:
+  exchange: 
+    build:
+      context: ./
+    container_name: exchange
+    hostname: exchange
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  victoriametrics:
+    image: victoriametrics/victoria-metrics:latest
+    container_name: victoriametrics
+    hostname: victoriametrics
+    ports:
+      - "8428:8428"
+    volumes:
+      - victoriametrics-data:/victoria-metrics-data
+    command:
+      - "-storageDataPath=/victoria-metrics-data"
+      - "-retentionPeriod=30d"
+
+  vmagent:
+    image: victoriametrics/vmagent:latest
+    container_name: vmagent
+    hostname: vmagent
+    depends_on:
+      - victoriametrics
+      - exchange
+    ports:
+      - "8429:8429"
+    volumes:
+      - ./observability/vmagent/scrape.yml:/etc/vmagent/scrape.yml:ro
+    command:
+      - "-promscrape.config=/etc/vmagent/scrape.yml"
+      - "-remoteWrite.url=http://victoriametrics:8428/api/v1/write"
+      - "-httpListenAddr=:8429"
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    hostname: grafana
+    depends_on:
+      - victoriametrics
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+
+volumes:
+  victoriametrics-data:
+  grafana-data:
