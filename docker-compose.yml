@@ -53,10 +53,44 @@ services:
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_LOG_LEVEL=error
     volumes:
       - grafana-data:/var/lib/grafana
       - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: alertmanager
+    hostname: alertmanager
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./observability/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager-data:/alertmanager
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+
+  vmalert:
+    image: victoriametrics/vmalert:latest
+    container_name: vmalert
+    hostname: vmalert
+    depends_on:
+      - victoriametrics
+      - alertmanager
+    ports:
+      - "8880:8880"
+    volumes:
+      - ./observability/vmalert/rules:/etc/vmalert/rules:ro
+    command:
+      - "-datasource.url=http://victoriametrics:8428"
+      - "-remoteWrite.url=http://victoriametrics:8428/api/v1/write"
+      - "-notifier.url=http://alertmanager:9093"
+      - "-rule=/etc/vmalert/rules/*.yml"
+      - "-httpListenAddr=:8880"
 
 volumes:
   victoriametrics-data:
   grafana-data:
+  alertmanager-data:

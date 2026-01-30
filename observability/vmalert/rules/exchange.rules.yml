@@ -1,0 +1,16 @@
+groups:
+  - name: exchange.rules
+    rules:
+      # Recording rule example: handy when you start exporting request metrics
+      - record: job:exchange_up:avg5m
+        expr: avg_over_time(up{job="exchange"}[5m])
+
+      # Alert example: will fire if the target stays down for 2 minutes
+      - alert: ExchangeTargetDown
+        expr: up{job="exchange"} == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Exchange target is down"
+          description: "The exchange scrape target has been down for >2m (instance={{ $labels.instance }})"
