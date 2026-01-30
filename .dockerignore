@@ -1,0 +1,16 @@
+.github/
+.vscode/
+.idea/
+
+lb/
+observability/
+
+*.md
+*.overrides
+*.env
+
+.editorconfig
+.gitattributes
+.gitignore
+
+docker-compose.yml

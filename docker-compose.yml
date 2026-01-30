@@ -47,7 +47,7 @@ services:
     ports:
       - "8429:8429"
     volumes:
-      - ./observability/vmagent/scrape.yml:/etc/vmagent/scrape.yml:ro
+      - ./o11y/vmagent/scrape.yml:/etc/vmagent/scrape.yml:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
     command:
       - "-promscrape.config=/etc/vmagent/scrape.yml"
@@ -68,9 +68,9 @@ services:
       - GF_LOG_LEVEL=error
     volumes:
       - grafana-data:/var/lib/grafana
-      - ./observability/grafana/grafana.ini:/etc/grafana/grafana.ini:ro
-      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ./o11y/grafana/grafana.ini:/etc/grafana/grafana.ini:ro
+      - ./o11y/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./o11y/grafana/dashboards:/var/lib/grafana/dashboards:ro
 
   alertmanager:
     image: prom/alertmanager:latest
@@ -79,7 +79,7 @@ services:
     ports:
       - "9093:9093"
     volumes:
-      - ./observability/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ./o11y/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
       - alertmanager-data:/alertmanager
     command:
       - "--config.file=/etc/alertmanager/alertmanager.yml"
@@ -95,7 +95,7 @@ services:
     ports:
       - "8880:8880"
     volumes:
-      - ./observability/vmalert/rules:/etc/vmalert/rules:ro
+      - ./o11y/vmalert/rules:/etc/vmalert/rules:ro
     command:
       - "-datasource.url=http://victoriametrics:8428"
       - "-remoteWrite.url=http://victoriametrics:8428/api/v1/write"
