@@ -14,16 +14,16 @@ services:
       timeout: 10s
       retries: 5
 
-  exchange_lb:
+  lb:
     image: nginx:alpine
-    container_name: exchange_lb
-    hostname: exchange-lb
+    container_name: lb
+    hostname: lb
     depends_on:
       - exchange
     ports:
-      - "8080:8080"
+      - "8080:80"
     volumes:
-      - ./observability/exchange-lb/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./lb/nginx.conf:/etc/nginx/nginx.conf:ro
 
   victoriametrics:
     image: victoriametrics/victoria-metrics:latest
