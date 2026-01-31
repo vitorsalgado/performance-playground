@@ -46,9 +46,12 @@ lint: ## run linters
 deps: ## dependencies
 	@go mod download
 
-.PHONY: loadtest
-loadtest: ## run load tests
-	@k6 run --compatibility-mode=base load-testing.ts
+.PHONY: k6
+k6: ## run k6 load tests
+	K6_WEB_DASHBOARD=true \
+	K6_WEB_DASHBOARD_OPEN=true \
+	K6_WEB_DASHBOARD_EXPORT=./load-testing/report.k6.html \
+	k6 run --summary-export=./load-testing/summary.k6.json ./load-testing/index.js
 
 ## -
 ## Misc
