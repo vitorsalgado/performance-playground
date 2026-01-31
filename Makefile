@@ -46,6 +46,10 @@ lint: ## run linters
 deps: ## dependencies
 	@go mod download
 
+.PHONY: loadtest
+loadtest: ## run load tests
+	@k6 run --compatibility-mode=base load-testing.ts
+
 ## -
 ## Misc
 ## --
