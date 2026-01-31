@@ -1,0 +1,70 @@
+discovery.docker "containers" {
+  host = "unix:///var/run/docker.sock"
+}
+
+discovery.relabel "exchange" {
+  targets = discovery.docker.containers.targets
+
+  rule {
+    action        = "keep"
+    source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+    regex         = "ad-tech-performance"
+  }
+
+  rule {
+    action        = "keep"
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    regex         = "exchange"
+  }
+
+  rule {
+    action        = "replace"
+    source_labels = ["__meta_docker_network_ip"]
+    target_label  = "__address__"
+    replacement   = "${1}:8080"
+  }
+
+  rule {
+    target_label = "service_name"
+    replacement  = "exchange"
+  }
+
+  rule {
+    action        = "replace"
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+    replacement   = "${1}"
+  }
+}
+
+pyroscope.write "local" {
+  endpoint {
+    url = "http://pyroscope:4040"
+  }
+}
+
+pyroscope.scrape "exchange" {
+  targets    = discovery.relabel.exchange.output
+  forward_to = [pyroscope.write.local.receiver]
+
+  scrape_interval = "30s"
+
+  profiling_config {
+    profile.process_cpu {
+      enabled = true
+    }
+    profile.goroutine {
+      enabled = true
+    }
+    profile.memory {
+      enabled = true
+    }
+    profile.mutex {
+      enabled = false
+    }
+    profile.block {
+      enabled = false
+    }
+  }
+}

@@ -16,6 +16,7 @@ services:
       - vmalert
       - grafana
       - alertmanager
+      - pyroscope
     healthcheck:
       test: ['CMD', 'curl', '-f', 'http://localhost:8080/ping']
       interval: 30s
@@ -170,9 +171,43 @@ services:
       application: vector
       group: o11y
 
+  pyroscope:
+    image: grafana/pyroscope:latest
+    container_name: pyroscope
+    hostname: pyroscope
+    ports:
+      - '4040:4040'
+    volumes:
+      - pyroscope-data:/data
+    command:
+      - '-pyroscopedb.data-path=/data'
+    labels:
+      application: pyroscope
+      group: o11y
+
+  alloy:
+    image: grafana/alloy:latest
+    container_name: alloy
+    hostname: alloy
+    depends_on:
+      - pyroscope
+    ports:
+      - '12345:12345'
+    volumes:
+      - ./o11y/pyroscope/alloy.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command:
+      - 'run'
+      - '--server.http.listen-addr=0.0.0.0:12345'
+      - '/etc/alloy/config.alloy'
+    labels:
+      application: alloy
+      group: o11y
+
 volumes:
   victoriametrics-data:
   grafana-data:
   alertmanager-data:
   victorialogs-data:
   vector-data:
+  pyroscope-data:
