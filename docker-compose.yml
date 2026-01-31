@@ -1,6 +1,10 @@
 version: '3.9'
 
 services:
+  # Exchange
+  # This is the main service that will be used for performance testing.
+  # --
+
   exchange:
     build:
       context: ./
@@ -26,6 +30,10 @@ services:
       application: exchange
       group: exchange
 
+  # Load Balancer
+  # The load balancer is the entrypoint for the exchange applications.
+  # --
+
   lb:
     image: nginx:alpine
     container_name: lb
@@ -45,6 +53,10 @@ services:
     labels:
       application: lb
       group: exchange
+
+  # Observability (o11y)
+  # The observability is based on the VictoriaMetrics stack.
+  # --
 
   victoriametrics:
     image: victoriametrics/victoria-metrics:latest
@@ -102,6 +114,9 @@ services:
       application: grafana
       group: o11y
 
+  # Alerting
+  # --
+
   alertmanager:
     image: prom/alertmanager:latest
     container_name: alertmanager
@@ -139,6 +154,9 @@ services:
       application: vmalert
       group: o11y
 
+  # Logging
+  # --
+
   victorialogs:
     image: victoriametrics/victoria-logs:latest
     container_name: victorialogs
@@ -170,6 +188,9 @@ services:
     labels:
       application: vector
       group: o11y
+
+  # Continuous Profiling
+  # --
 
   pyroscope:
     image: grafana/pyroscope:latest
