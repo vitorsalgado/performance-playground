@@ -12,5 +12,7 @@ observability/
 .editorconfig
 .gitattributes
 .gitignore
+.golangci.yml
 
 docker-compose.yml
+Brewfile
