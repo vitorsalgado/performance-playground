@@ -1,0 +1,32 @@
+data_dir: /var/lib/vector
+
+sources:
+  docker:
+    type: docker_logs
+    docker_host: unix:///var/run/docker.sock
+    exclude_containers:
+      - vector
+      - victorialogs
+
+transforms:
+  enrich:
+    type: remap
+    inputs: ['docker']
+    source: |
+      .service = .label."com.docker.compose.service"
+      .application = .label."application"
+      .group = .label."group"
+      del(.label)
+
+sinks:
+  vlogs:
+    type: http
+    inputs: ['enrich']
+    uri: 'http://victorialogs:9428/insert/jsonline?_stream_fields=compose_project,service,container_name,host&_msg_field=message&_time_field=timestamp'
+    compression: gzip
+    encoding:
+      codec: json
+    framing:
+      method: newline_delimited
+    healthcheck:
+      enabled: false

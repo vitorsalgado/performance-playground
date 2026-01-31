@@ -58,6 +58,8 @@ func main() {
 		}
 	}()
 
+	logger.Info("starting")
+
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		logger.Error("server error", slog.Any("error", err))
 	}
