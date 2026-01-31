@@ -27,6 +27,21 @@ profile.cov
 go.work
 go.work.sum
 
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Diagnostic reports (https://nodejs.org/api/report.html)
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# TypeScript
+*.tsbuildinfo
+
+# Optional npm cache directory
+.npm
+
 # env file
 .env
 
@@ -36,6 +51,7 @@ go.work.sum
 
 Makefile.overrides
 
+node_modules/
 out/
 tmp/
 temp/
