@@ -6,6 +6,11 @@
 
 export
 
+# Terminal styling helpers (ANSI escape codes).
+reset := \033[0m
+bold  := \033[1m
+green := \033[32m
+
 # Prefer "docker compose" (plugin) but support legacy "docker-compose".
 # Can be overridden via env/CLI, e.g. `make up DOCKER_COMPOSE=docker-compose`.
 DOCKER_COMPOSE ?= $(shell \
@@ -20,15 +25,29 @@ DOCKER_COMPOSE ?= $(shell \
 
 .PHONY: up
 up: ## run everything
+	@$(DOCKER_COMPOSE) up --detach --build --force-recreate
+
+	@printf "\n"
+	@printf "$(bold)%-18s$(reset) $(green)%s$(reset)\n" "Exchange:" "http://localhost:8080"
+	@printf "$(bold)%-18s$(reset) $(green)%s$(reset)\n" "VictoriaMetrics:" "http://localhost:8428"
+	@printf "$(bold)%-18s$(reset) $(green)%s$(reset)\n" "VictoriaLogs:" "http://localhost:9428/select/vmui"
+	@printf "$(bold)%-18s$(reset) $(green)%s$(reset)\n" "VictoriaAlert:" "http://localhost:8880/vmalert"
+	@printf "$(bold)%-18s$(reset) $(green)%s$(reset)\n" "Grafana:" "http://localhost:3000"
+	@printf "$(bold)%-18s$(reset) $(green)%s$(reset)\n" "Alertmanager:" "http://localhost:9093"
+	@printf "$(bold)%-18s$(reset) $(green)%s$(reset)\n" "Pyroscope:" "http://localhost:4040"
+	@printf "\n"
+
+.PHONY: up-attached
+up-attached: ## run everything attached
 	@$(DOCKER_COMPOSE) up --build --force-recreate
 
 .PHONY: down
 down: ## stop everything
-	@$(DOCKER_COMPOSE) down --volumes --remove-orphans
+	@$(DOCKER_COMPOSE) down
 
 .PHONY: run
 run: ## run the application
-	@go run ./cmd/exchange
+	@go run ./exchange
 
 ## --
 ## Testing

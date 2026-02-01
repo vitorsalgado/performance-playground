@@ -1,5 +1,7 @@
 version: '3.9'
 
+name: perf
+
 services:
   # Exchange
   # This is the main service that will be used for performance testing.
@@ -8,6 +10,8 @@ services:
   exchange:
     build:
       context: ./
+      args:
+        - APP=exchange
     expose:
       - '8080'
     deploy:

@@ -24,6 +24,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ping", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("pong")) })
 
+	// Profiling endpoints
 	mux.HandleFunc("/debug/pprof/", pprof.Index)
 	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
 	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
@@ -33,6 +34,8 @@ func main() {
 	mux.Handle("/debug/pprof/threadcreate", pprof.Handler("threadcreate"))
 	mux.Handle("/debug/pprof/block", pprof.Handler("block"))
 
+	// Prometheus metrics collector
+	// VictoriaMetrics will scrape metrics through this endpoint.
 	registerer := prometheus.NewRegistry()
 	registerer.MustRegister(
 		collectors.NewGoCollector(),
@@ -46,17 +49,19 @@ func main() {
 		BaseContext: func(l net.Listener) context.Context { return ctx },
 	}
 
+	// Graceful shutdown
 	go func() {
 		<-ctx.Done()
 
 		c, fn := context.WithTimeout(context.Background(), 5*time.Second)
 		defer fn()
 
-		err := server.Shutdown(c)
-		if err != nil {
+		if err := server.Shutdown(c); err != nil {
 			logger.Error("error during shutdown", slog.Any("error", err))
 		}
 	}()
+
+	// Starting the HTTP server
 
 	logger.Info("starting")
 
