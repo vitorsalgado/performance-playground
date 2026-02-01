@@ -1,30 +1,425 @@
 package main
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
+	"crypto/tls"
+	"encoding/json"
+	"errors"
 	"log/slog"
 	"net"
 	"net/http"
 	"net/http/pprof"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
+
+	"golang.org/x/sync/errgroup"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/vitorsalgado/ad-tech-performance/internal/openrtb"
 )
+
+// Models
+// --
+
+type App struct {
+	ID        int        `json:"id"`
+	Name      string     `json:"name"`
+	Publisher *Publisher `json:"publisher"`
+}
+
+type Publisher struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
+}
+
+// Apps holds a map of applications for quick lookup.
+type Apps struct {
+	Apps map[int]*App
+}
+
+// DSP represents a DSP with its endpoint.
+type DSP struct {
+	ID       int    `json:"id"`
+	Name     string `json:"name"`
+	Endpoint string `json:"endpoint"`
+}
+
+// DSPs holds a map of DSPs for quick lookup.
+type DSPs struct {
+	DSPs []*DSP
+}
+
+// Cache
+// The cache holds application data that can be served quickly without hitting a database.
+// This is a simplified example with only application data to test the performance overhead of the whole
+// caching process.
+// Ideally, the cache entries should be big.
+// --
+
+// CacheLoadFunc represents a function that loads cache data.
+type CacheLoadFunc func(state *State) error
+
+type State struct {
+	Apps atomic.Pointer[Apps]
+	DSPs atomic.Pointer[DSPs]
+}
+
+// Cache manages the in-memory cache objects needed by the application.
+type Cache struct {
+	state  *State
+	plan   map[string]CacheLoadFunc
+	logger *slog.Logger
+	done   chan struct{}
+}
+
+// NewCache creates a new cache with the given logger and plan.
+func NewCache(logger *slog.Logger, plan map[string]CacheLoadFunc) *Cache {
+	return &Cache{state: &State{}, plan: plan, logger: logger, done: make(chan struct{})}
+}
+
+// Start starts the cache loading process.
+// The cache will periodically reload the data from the underlying data source.
+func (c *Cache) Start(ctx context.Context, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-c.done:
+			return
+		case <-ticker.C:
+			c.Load(ctx)
+		}
+	}
+}
+
+// Stop stops the cache loading process.
+func (c *Cache) Stop() {
+	close(c.done)
+}
+
+// Load loads all cache data in parallel.
+func (c *Cache) Load(ctx context.Context) error {
+	group, ctx := errgroup.WithContext(ctx)
+
+	for name, action := range c.plan {
+		group.Go(func() error {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+			}
+
+			if err := action(c.state); err != nil {
+				c.logger.Error("cache: error loading", slog.String("name", name), slog.Any("error", err))
+				return err
+			}
+
+			c.logger.Info("cache: loaded", slog.String("name", name))
+
+			return nil
+		})
+	}
+
+	return group.Wait()
+}
+
+// CacheLoadApps loads the apps from the given path.
+func CacheLoadApps(path string) CacheLoadFunc {
+	return func(state *State) error {
+		f, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+
+		defer f.Close()
+
+		var apps []App
+		if err = json.NewDecoder(f).Decode(&apps); err != nil {
+			return err
+		}
+
+		appMap := make(map[int]*App, len(apps))
+		for i := range apps {
+			app := apps[i]
+			appMap[app.ID] = &app
+		}
+
+		state.Apps.Store(&Apps{Apps: appMap})
+
+		return nil
+	}
+}
+
+// CacheLoadDSPs loads the DSPs from the given path.
+func CacheLoadDSPs(path string) CacheLoadFunc {
+	return func(state *State) error {
+		f, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+
+		defer f.Close()
+
+		var dsps []*DSP
+		if err = json.NewDecoder(f).Decode(&dsps); err != nil {
+			return err
+		}
+
+		state.DSPs.Store(&DSPs{DSPs: dsps})
+
+		return nil
+	}
+}
+
+// DSP IO
+// The DSP IO is responsible for handling the DSP requests and responses.
+// --
+
+type IOStatus int
+
+const (
+	IOStatusDropped IOStatus = iota
+	IOStatusEnqueued
+)
+
+// In represents the input to execute a DSP request.
+type In struct {
+	ID         int
+	DSPID      int
+	BidRequest *http.Request
+	Responder  chan<- Out
+	Timestamp  time.Time
+}
+
+// Out represents the response of a DSP request.
+type Out struct {
+	ID          int
+	BidResponse openrtb.BidResponse
+	Err         error
+}
+
+// DSPIO represents the actual DSP IO handler.
+type DSPIO struct {
+	transport *http.Transport
+	pool      int
+	input     chan In
+	done      chan struct{}
+}
+
+// NewDSPIO creates a new DSP IO handler.
+func NewDSPIO(transport *http.Transport, pool int) *DSPIO {
+	return &DSPIO{
+		transport: transport,
+		pool:      pool,
+		input:     make(chan In),
+		done:      make(chan struct{}),
+	}
+}
+
+// Start starts the DSP IO background workers.
+// The workers will execute the DSP requests in the background.
+func (d *DSPIO) Start(ctx context.Context) {
+	for range d.pool {
+		go func() {
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-d.done:
+					return
+				case in := <-d.input:
+					d.Execute(in)
+				}
+			}
+		}()
+	}
+}
+
+// Stop stops the DSP IO background workers.
+func (d *DSPIO) Stop() {
+	close(d.done)
+}
+
+// Enqueue enqueues a DSP request to be executed by the background workers.
+func (d *DSPIO) Enqueue(in In) {
+	mDSPRequestTotal.
+		WithLabelValues(strconv.Itoa(in.DSPID)).
+		Inc()
+
+	select {
+	case d.input <- in:
+		return
+	default:
+	}
+
+	mDSPRequestDropped.
+		WithLabelValues(strconv.Itoa(in.DSPID)).
+		Inc()
+
+	in.Responder <- Out{
+		ID:  in.ID,
+		Err: errors.New("dspio: queue is full"),
+	}
+}
+
+// Execute executes the DSP request.
+func (d *DSPIO) Execute(in In) {
+	rateDSPConcurrency.Inc()
+	defer rateDSPConcurrency.Dec()
+
+	res, err := d.transport.RoundTrip(in.BidRequest)
+	if err != nil {
+		mDSPRequestError.
+			WithLabelValues(strconv.Itoa(in.DSPID)).
+			Inc()
+
+		in.Responder <- Out{
+			ID:  in.ID,
+			Err: err,
+		}
+		return
+	}
+	defer res.Body.Close()
+
+	var bidResponse openrtb.BidResponse
+	if err = json.NewDecoder(res.Body).Decode(&bidResponse); err != nil {
+		mDSPRequestError.
+			WithLabelValues(strconv.Itoa(in.DSPID)).
+			Inc()
+
+		in.Responder <- Out{
+			ID:  in.ID,
+			Err: err,
+		}
+		return
+	}
+
+	in.Responder <- Out{
+		ID:          in.ID,
+		BidResponse: bidResponse,
+		Err:         nil,
+	}
+}
+
+// Metrics
+// --
+// DSP IO metrics.
+var rateDSPConcurrency = prometheus.NewGauge(prometheus.GaugeOpts{Name: "dspio_concurrency_rate"})
+var mDSPRequestTotal = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "dspio_request_total"}, []string{"dsp_id"})
+var mDSPRequestDropped = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "dspio_request_dropped_total"}, []string{"dsp_id"})
+var mDSPRequestError = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "dspio_request_error_total"}, []string{"dsp_id"})
+var mDSPConnDialTotal = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "dspio_conn_dial_total"}, []string{"host"})
+
+// Ad request metrics.
+var counterTotalAdRequest = prometheus.NewCounter(prometheus.CounterOpts{Name: "ad_request_total"})
+var mTotalAdRequestPerPubAndApp = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "ad_request_per_pub_and_app_total"}, []string{"pub_id", "app_id"})
+
+// DSP exchange metrics.
+var mDSPBeforePerPub = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "dsp_before_per_pub_total"}, []string{"dsp_id", "pub_id"})
+var mDSPAfterPerPub = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "dsp_after_per_pub_total"}, []string{"dsp_id", "pub_id"})
+
+// Main application logic.
+// --
+
+func init() {
+	prometheus.MustRegister(
+		rateDSPConcurrency,
+		mDSPRequestTotal,
+		mDSPRequestDropped,
+		mDSPRequestError,
+		mDSPConnDialTotal,
+		mTotalAdRequestPerPubAndApp,
+		mDSPBeforePerPub,
+		mDSPAfterPerPub,
+	)
+}
 
 func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
-	defer cancel()
+	rootCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/ping", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("pong")) })
+	server := &http.Server{Addr: ":8080", Handler: mux, BaseContext: func(l net.Listener) context.Context { return rootCtx }}
 
-	// Profiling endpoints
+	// Cache
+	// --
+	plan := make(map[string]CacheLoadFunc, 2)
+	plan["apps"] = CacheLoadApps(os.Getenv("EXCHANGE_APPS_CACHE_PATH"))
+	plan["dsps"] = CacheLoadDSPs(os.Getenv("EXCHANGE_DSPS_CACHE_PATH"))
+
+	cache := NewCache(logger, plan)
+	if err := cache.Load(rootCtx); err != nil {
+		logger.Error("main: failed to load cache", slog.Any("error", err))
+		os.Exit(1)
+	}
+	cache.Start(rootCtx, 10*time.Second)
+
+	// DSP IO
+	// --
+	maxIdleConns, err := strconv.Atoi(os.Getenv("EXCHANGE_DSPIO_MAX_IDLE_CONNS"))
+	if err != nil {
+		logger.Error("main: failed to parse EXCHANGE_DSPIO_MAX_IDLE_CONNS", slog.Any("error", err))
+		os.Exit(1)
+	}
+	maxIdleConnsPerHost, err := strconv.Atoi(os.Getenv("EXCHANGE_DSPIO_MAX_IDLE_CONNS_PER_HOST"))
+	if err != nil {
+		logger.Error("main: failed to parse EXCHANGE_DSPIO_MAX_IDLE_CONNS_PER_HOST", slog.Any("error", err))
+		os.Exit(1)
+	}
+	idleConnTimeout, err := time.ParseDuration(os.Getenv("EXCHANGE_DSPIO_IDLE_CONN_TIMEOUT"))
+	if err != nil {
+		logger.Error("main: failed to parse EXCHANGE_DSPIO_IDLE_CONN_TIMEOUT", slog.Any("error", err))
+		os.Exit(1)
+	}
+	pool, err := strconv.Atoi(os.Getenv("EXCHANGE_DSPIO_POOL"))
+	if err != nil {
+		logger.Error("main: failed to parse EXCHANGE_DSPIO_POOL", slog.Any("error", err))
+		os.Exit(1)
+	}
+
+	dialer := &net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}
+	transport := &http.Transport{
+		MaxIdleConns:        maxIdleConns,
+		MaxIdleConnsPerHost: maxIdleConnsPerHost,
+		IdleConnTimeout:     idleConnTimeout,
+		TLSClientConfig: &tls.Config{
+			ClientSessionCache: tls.NewLRUClientSessionCache(256),
+		},
+		ForceAttemptHTTP2: true,
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			c, err := dialer.DialContext(ctx, network, addr)
+			if err != nil {
+				return c, err
+			}
+
+			sep := strings.LastIndex(addr, ":")
+			mDSPConnDialTotal.WithLabelValues(addr[:sep]).Inc()
+
+			return c, nil
+		},
+	}
+	dspio := NewDSPIO(transport, pool)
+	dspio.Start(rootCtx)
+
+	// HTTP endpoints
+	// --
+	// Ping/Pong
+	// Simple endpoint to check if the server is running.
+	mux.HandleFunc("/ping", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("pong")) })
+	// Profiling endpoints.
 	mux.HandleFunc("/debug/pprof/", pprof.Index)
 	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
 	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
@@ -33,8 +428,7 @@ func main() {
 	mux.Handle("/debug/pprof/heap", pprof.Handler("heap"))
 	mux.Handle("/debug/pprof/threadcreate", pprof.Handler("threadcreate"))
 	mux.Handle("/debug/pprof/block", pprof.Handler("block"))
-
-	// Prometheus metrics collector
+	// Prometheus metrics collector.
 	// VictoriaMetrics will scrape metrics through this endpoint.
 	registerer := prometheus.NewRegistry()
 	registerer.MustRegister(
@@ -43,15 +437,109 @@ func main() {
 	)
 	mux.Handle("/metrics", promhttp.HandlerFor(registerer, promhttp.HandlerOpts{}))
 
-	server := &http.Server{
-		Addr:        ":8080",
-		Handler:     mux,
-		BaseContext: func(l net.Listener) context.Context { return ctx },
-	}
+	// Ad request endpoint.
+	// This is the main endpoint that will be used for experimentation.
+	mux.HandleFunc("/ad", func(w http.ResponseWriter, r *http.Request) {
+		counterTotalAdRequest.Inc()
 
+		gz, err := gzip.NewReader(r.Body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer gz.Close()
+
+		var adRequest openrtb.BidRequest
+		if err = json.NewDecoder(gz).Decode(&adRequest); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		apps := cache.state.Apps.Load()
+		appid, err := strconv.Atoi(adRequest.App.ID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		app := apps.Apps[appid]
+		if app == nil {
+			http.Error(w, "app not found", http.StatusNotFound)
+			return
+		}
+
+		mTotalAdRequestPerPubAndApp.
+			WithLabelValues(strconv.Itoa(app.Publisher.ID), strconv.Itoa(app.ID)).
+			Inc()
+
+		dsps := cache.state.DSPs.Load()
+		responses := make(chan Out, len(dsps.DSPs))
+
+		for i, dsp := range dsps.DSPs {
+			mDSPBeforePerPub.
+				WithLabelValues(strconv.Itoa(dsp.ID), strconv.Itoa(app.Publisher.ID)).
+				Inc()
+
+			body, err := json.Marshal(adRequest)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			buf := new(bytes.Buffer)
+			gzw := gzip.NewWriter(buf)
+			defer gzw.Close()
+			if _, err := gzw.Write(body); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, dsp.Endpoint, buf)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("Content-Encoding", "gzip")
+
+			dspio.Enqueue(In{
+				ID:         i,
+				DSPID:      dsp.ID,
+				BidRequest: req,
+				Responder:  responses,
+				Timestamp:  time.Now(),
+			})
+
+			mDSPAfterPerPub.
+				WithLabelValues(strconv.Itoa(dsp.ID), strconv.Itoa(app.Publisher.ID)).
+				Inc()
+		}
+
+		var bidResponse openrtb.BidResponse
+		for response := range responses {
+			if response.Err != nil {
+				logger.Error("ad: error executing dsp request", slog.Any("error", response.Err))
+				continue
+			}
+
+			bidResponse = response.BidResponse
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+
+		if err := json.NewEncoder(w).Encode(bidResponse); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	})
+
+	// Starting the HTTP server
+	// --
 	// Graceful shutdown
 	go func() {
-		<-ctx.Done()
+		<-rootCtx.Done()
+		stop()
+
+		cache.Stop()
 
 		c, fn := context.WithTimeout(context.Background(), 5*time.Second)
 		defer fn()
@@ -60,8 +548,6 @@ func main() {
 			logger.Error("error during shutdown", slog.Any("error", err))
 		}
 	}()
-
-	// Starting the HTTP server
 
 	logger.Info("starting")
 

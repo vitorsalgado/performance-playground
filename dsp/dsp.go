@@ -20,37 +20,30 @@ import (
 // Config is the configuration for the DSP.
 type Config struct {
 	// Latency is the latency to add to the /bid endpoint.
-	// It is a string that represents a duration in milliseconds.
-	// Example: "100ms", "1s", "1000ms".
-	Latency string `json:"latency"`
+	Latency time.Duration
 }
 
 func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	config := Config{}
 
-	cp := os.Getenv("DSP_CONFIG_PATH")
-	f, err := os.Open(cp)
+	latency, err := time.ParseDuration(os.Getenv("DSP_LATENCY"))
 	if err != nil {
-		logger.Error("error opening config file", slog.Any("error", err))
-		os.Exit(1)
-	}
-	defer f.Close()
-
-	config := new(Config)
-	if err := json.NewDecoder(f).Decode(config); err != nil {
-		logger.Error("error decoding config file", slog.Any("error", err))
+		logger.Error("error parsing DSP_LATENCY", slog.Any("error", err))
 		os.Exit(1)
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
+	config.Latency = latency
+
+	rootCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
 	mux := http.NewServeMux()
-	server := &http.Server{Addr: ":8080", Handler: mux, BaseContext: func(l net.Listener) context.Context { return ctx }}
+	server := &http.Server{Addr: ":8080", Handler: mux, BaseContext: func(l net.Listener) context.Context { return rootCtx }}
 
 	// Graceful shutdown
 	go func() {
-		<-ctx.Done()
+		<-rootCtx.Done()
 		stop()
 
 		c, fn := context.WithTimeout(context.Background(), 5*time.Second)
@@ -76,16 +69,9 @@ func main() {
 	// /bid is the main endpoint for the DSP and will be used for performance testing.
 	// --
 
-	// Configuring the /bid endpoint
-	latency, err := time.ParseDuration(config.Latency)
-	if err != nil {
-		logger.Error("error parsing latency", slog.Any("error", err))
-		os.Exit(1)
-	}
-
 	mux.HandleFunc("/bid", func(w http.ResponseWriter, r *http.Request) {
-		if latency > 0 {
-			time.Sleep(latency)
+		if config.Latency > 0 {
+			time.Sleep(config.Latency)
 		}
 
 		bid := &openrtb.BidResponse{
