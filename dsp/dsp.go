@@ -12,9 +12,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+
 	"github.com/vitorsalgado/ad-tech-performance/internal/openrtb"
 	"github.com/vitorsalgado/ad-tech-performance/internal/testcert"
 )
@@ -55,12 +54,7 @@ func main() {
 
 	// Prometheus metrics collector
 	// VictoriaMetrics will scrape metrics through this endpoint.
-	registerer := prometheus.NewRegistry()
-	registerer.MustRegister(
-		collectors.NewGoCollector(),
-		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
-	)
-	mux.Handle("/metrics", promhttp.HandlerFor(registerer, promhttp.HandlerOpts{}))
+	mux.Handle("/metrics", promhttp.Handler())
 
 	// Bid endpoint
 	// /bid is the main endpoint for the DSP and will be used for performance testing.

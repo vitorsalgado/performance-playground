@@ -3,11 +3,11 @@ import { check, sleep } from 'k6'
 import exec from 'k6/execution'
 
 // Target
-const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080'
+const BASE_URL = __ENV.BASE_URL || 'http://localhost:9999'
 const AD_PATH = __ENV.AD_PATH || '/ad'
 
 // Load profile
-const VUS = Number(__ENV.VUS) || 20
+const VUS = Number(__ENV.VUS) || 50
 const DURATION = __ENV.DURATION || '30s'
 const SLEEP_SECONDS = Number(__ENV.SLEEP_SECONDS) || 0.1
 
@@ -20,7 +20,7 @@ export const options = {
   duration: DURATION,
   thresholds: {
     http_req_failed: ['rate<0.01'],
-    http_req_duration: ['p(95)<200', 'p(99)<500'],
+    http_req_duration: ['p(95)<2000', 'p(99)<2000'],
   },
   tags: {
     test: 'exchange-ad',

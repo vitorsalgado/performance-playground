@@ -19,11 +19,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/collectors"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/vitorsalgado/ad-tech-performance/internal/environ"
 	"github.com/vitorsalgado/ad-tech-performance/internal/openrtb"
 )
@@ -458,12 +457,7 @@ func main() {
 	mux.Handle("/debug/pprof/block", pprof.Handler("block"))
 	// Prometheus metrics collector.
 	// VictoriaMetrics will scrape metrics through this endpoint.
-	registerer := prometheus.NewRegistry()
-	registerer.MustRegister(
-		collectors.NewGoCollector(),
-		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
-	)
-	mux.Handle("/metrics", promhttp.HandlerFor(registerer, promhttp.HandlerOpts{}))
+	mux.Handle("/metrics", promhttp.Handler())
 
 	// Ad request endpoint.
 	// This is the main endpoint that will be used for experimentation.

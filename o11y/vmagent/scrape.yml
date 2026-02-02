@@ -23,3 +23,8 @@ scrape_configs:
         regex: "(.+)"
         target_label: __address__
         replacement: "$1:8080"
+
+  - job_name: cadvisor
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["cadvisor:8080"]

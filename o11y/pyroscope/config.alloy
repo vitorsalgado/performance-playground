@@ -1,3 +1,8 @@
+logging {
+  level  = "info"
+  format = "logfmt"
+}
+
 discovery.docker "containers" {
   host = "unix:///var/run/docker.sock"
 }
@@ -61,10 +66,10 @@ pyroscope.scrape "exchange" {
       enabled = true
     }
     profile.mutex {
-      enabled = false
+      enabled = true
     }
     profile.block {
-      enabled = false
+      enabled = true
     }
   }
 }

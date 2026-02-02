@@ -1,4 +1,4 @@
-FROM golang:1.25.4 AS builder
+FROM golang:1.25.4 as builder
 WORKDIR /src
 
 ARG TARGETOS=linux
@@ -12,12 +12,12 @@ COPY internal ./internal
 COPY $APP ./$APP
 
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
-    go build \
-      -trimpath \
-      -buildvcs=false \
-      -ldflags="-s -w" \
-      -o /out/app \
-      ./$APP
+  go build \
+  -trimpath \
+  -buildvcs=false \
+  -ldflags="-s -w" \
+  -o /out/app \
+  ./$APP
 
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=builder /out/app /app

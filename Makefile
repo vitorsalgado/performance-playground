@@ -51,7 +51,7 @@ up-attached: ## run everything attached
 
 .PHONY: down
 down: ## stop everything
-	@$(DOCKER_COMPOSE) down
+	@$(DOCKER_COMPOSE) down --remove-orphans --volumes
 
 .PHONY: run-exchange
 run-exchange: ## run the exchange application
@@ -62,6 +62,7 @@ run-exchange: ## run the exchange application
 .PHONY: run-dsp
 run-dsp: ## run the dsp application
 	@DSP_LATENCY=0 go run ./dsp/dsp.go
+
 ## --
 ## Testing
 ## --
@@ -84,6 +85,22 @@ k6: ## run k6 load tests
 	K6_WEB_DASHBOARD_OPEN=true \
 	K6_WEB_DASHBOARD_EXPORT=./load-testing/report.k6.html \
 	k6 run --summary-export=./load-testing/summary.k6.json ./load-testing/index.js
+
+## --
+## Grafana
+## --
+
+GRAFANA_URL ?= http://localhost:3000
+GRAFANA_ADMIN_USER ?= admin
+GRAFANA_ADMIN_PASSWORD ?= admin
+
+.PHONY: grafana-dashboards-reload
+grafana-dashboards-reload: ## reload provisioned Grafana dashboards (no container restart)
+	@curl -fsS \
+		-X POST "$(GRAFANA_URL)/api/admin/provisioning/dashboards/reload" \
+		-u "$(GRAFANA_ADMIN_USER):$(GRAFANA_ADMIN_PASSWORD)" \
+		>/dev/null
+	@printf "$(bold)%-24s$(reset) $(green)%s$(reset)\n" "Grafana dashboards:" "reloaded"
 
 ## -
 ## Misc
