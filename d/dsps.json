@@ -1,0 +1,27 @@
+[
+    {
+        "id": 1234,
+        "name": "dsp1",
+        "endpoint": "https://dsp01:8080/bid"
+    },
+    {
+        "id": 2345,
+        "name": "dsp2",
+        "endpoint": "https://dsp02:8080/bid"
+    },
+    {
+        "id": 3456,
+        "name": "dsp3",
+        "endpoint": "https://dsp03:8080/bid"
+    },
+    {
+        "id": 4567,
+        "name": "dsp4",
+        "endpoint": "https://dsp04:8080/bid"
+    },
+    {
+        "id": 5678,
+        "name": "dsp5",
+        "endpoint": "https://dsp05:8080/bid"
+    }
+]

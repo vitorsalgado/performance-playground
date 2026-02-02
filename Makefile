@@ -23,12 +23,20 @@ DOCKER_COMPOSE ?= $(shell \
 	fi \
 )
 
+.PHONY: init
+init: ## initialize the project with default configurations
+	@time node bin/gen-apps.js \
+		--count 250000 \
+		--publisher-count 250 \
+		--start-id 1250 \
+		--out d/apps.json
+
 .PHONY: up
 up: ## run everything
 	@$(DOCKER_COMPOSE) up --detach --build --force-recreate
 
 	@printf "\n"
-	@printf "$(bold)%-18s$(reset) $(green)%s$(reset)\n" "Exchange:" "http://localhost:8080"
+	@printf "$(bold)%-18s$(reset) $(green)%s$(reset)\n" "Exchange LB:" "http://localhost:8080"
 	@printf "$(bold)%-18s$(reset) $(green)%s$(reset)\n" "VictoriaMetrics:" "http://localhost:8428"
 	@printf "$(bold)%-18s$(reset) $(green)%s$(reset)\n" "VictoriaLogs:" "http://localhost:9428/select/vmui"
 	@printf "$(bold)%-18s$(reset) $(green)%s$(reset)\n" "VictoriaAlert:" "http://localhost:8880/vmalert"
@@ -45,10 +53,15 @@ up-attached: ## run everything attached
 down: ## stop everything
 	@$(DOCKER_COMPOSE) down
 
-.PHONY: run
-run: ## run the application
-	@go run ./exchange
+.PHONY: run-exchange
+run-exchange: ## run the exchange application
+	EXCHANGE_APPS_CACHE_PATH=./d/apps.json \
+	EXCHANGE_DSPS_CACHE_PATH=./d/dsps.json \
+	go run ./exchange/exchange.go
 
+.PHONY: run-dsp
+run-dsp: ## run the dsp application
+	@DSP_LATENCY=0 go run ./dsp/dsp.go
 ## --
 ## Testing
 ## --

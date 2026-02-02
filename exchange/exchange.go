@@ -24,6 +24,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/vitorsalgado/ad-tech-performance/internal/environ"
 	"github.com/vitorsalgado/ad-tech-performance/internal/openrtb"
 )
 
@@ -66,7 +67,7 @@ type DSPs struct {
 // --
 
 // CacheLoadFunc represents a function that loads cache data.
-type CacheLoadFunc func(state *State) error
+type CacheLoadFunc func(state *State, logger *slog.Logger) error
 
 type State struct {
 	Apps atomic.Pointer[Apps]
@@ -92,16 +93,18 @@ func (c *Cache) Start(ctx context.Context, interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-c.done:
-			return
-		case <-ticker.C:
-			c.Load(ctx)
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-c.done:
+				return
+			case <-ticker.C:
+				c.Load(ctx)
+			}
 		}
-	}
+	}()
 }
 
 // Stop stops the cache loading process.
@@ -121,7 +124,7 @@ func (c *Cache) Load(ctx context.Context) error {
 			default:
 			}
 
-			if err := action(c.state); err != nil {
+			if err := action(c.state, c.logger); err != nil {
 				c.logger.Error("cache: error loading", slog.String("name", name), slog.Any("error", err))
 				return err
 			}
@@ -137,7 +140,7 @@ func (c *Cache) Load(ctx context.Context) error {
 
 // CacheLoadApps loads the apps from the given path.
 func CacheLoadApps(path string) CacheLoadFunc {
-	return func(state *State) error {
+	return func(state *State, logger *slog.Logger) error {
 		f, err := os.Open(path)
 		if err != nil {
 			return err
@@ -158,13 +161,15 @@ func CacheLoadApps(path string) CacheLoadFunc {
 
 		state.Apps.Store(&Apps{Apps: appMap})
 
+		logger.Info("cache: loaded apps", slog.Int("count", len(apps)))
+
 		return nil
 	}
 }
 
 // CacheLoadDSPs loads the DSPs from the given path.
 func CacheLoadDSPs(path string) CacheLoadFunc {
-	return func(state *State) error {
+	return func(state *State, logger *slog.Logger) error {
 		f, err := os.Open(path)
 		if err != nil {
 			return err
@@ -179,6 +184,8 @@ func CacheLoadDSPs(path string) CacheLoadFunc {
 
 		state.DSPs.Store(&DSPs{DSPs: dsps})
 
+		logger.Info("cache: loaded dsps", slog.Int("count", len(dsps)))
+
 		return nil
 	}
 }
@@ -186,13 +193,6 @@ func CacheLoadDSPs(path string) CacheLoadFunc {
 // DSP IO
 // The DSP IO is responsible for handling the DSP requests and responses.
 // --
-
-type IOStatus int
-
-const (
-	IOStatusDropped IOStatus = iota
-	IOStatusEnqueued
-)
 
 // In represents the input to execute a DSP request.
 type In struct {
@@ -206,6 +206,7 @@ type In struct {
 // Out represents the response of a DSP request.
 type Out struct {
 	ID          int
+	DSPID       int
 	BidResponse openrtb.BidResponse
 	Err         error
 }
@@ -269,8 +270,9 @@ func (d *DSPIO) Enqueue(in In) {
 		Inc()
 
 	in.Responder <- Out{
-		ID:  in.ID,
-		Err: errors.New("dspio: queue is full"),
+		ID:    in.ID,
+		DSPID: in.DSPID,
+		Err:   errors.New("dspio: queue is full"),
 	}
 }
 
@@ -286,8 +288,9 @@ func (d *DSPIO) Execute(in In) {
 			Inc()
 
 		in.Responder <- Out{
-			ID:  in.ID,
-			Err: err,
+			ID:    in.ID,
+			DSPID: in.DSPID,
+			Err:   err,
 		}
 		return
 	}
@@ -300,14 +303,16 @@ func (d *DSPIO) Execute(in In) {
 			Inc()
 
 		in.Responder <- Out{
-			ID:  in.ID,
-			Err: err,
+			ID:    in.ID,
+			DSPID: in.DSPID,
+			Err:   err,
 		}
 		return
 	}
 
 	in.Responder <- Out{
 		ID:          in.ID,
+		DSPID:       in.DSPID,
 		BidResponse: bidResponse,
 		Err:         nil,
 	}
@@ -356,6 +361,12 @@ func main() {
 
 	// Cache
 	// --
+	cacheUpdateInterval, err := environ.GetDuration("EXCHANGE_CACHE_UPDATE_INTERVAL", 1*time.Minute)
+	if err != nil {
+		logger.Error("main: failed to parse EXCHANGE_CACHE_UPDATE_INTERVAL", slog.Any("error", err))
+		os.Exit(1)
+	}
+
 	plan := make(map[string]CacheLoadFunc, 2)
 	plan["apps"] = CacheLoadApps(os.Getenv("EXCHANGE_APPS_CACHE_PATH"))
 	plan["dsps"] = CacheLoadDSPs(os.Getenv("EXCHANGE_DSPS_CACHE_PATH"))
@@ -365,38 +376,55 @@ func main() {
 		logger.Error("main: failed to load cache", slog.Any("error", err))
 		os.Exit(1)
 	}
-	cache.Start(rootCtx, 10*time.Second)
+	cache.Start(rootCtx, cacheUpdateInterval)
 
 	// DSP IO
 	// --
-	maxIdleConns, err := strconv.Atoi(os.Getenv("EXCHANGE_DSPIO_MAX_IDLE_CONNS"))
+	maxIdleConns, err := environ.GetInt("EXCHANGE_DSPIO_MAX_IDLE_CONNS", 100)
 	if err != nil {
 		logger.Error("main: failed to parse EXCHANGE_DSPIO_MAX_IDLE_CONNS", slog.Any("error", err))
 		os.Exit(1)
 	}
-	maxIdleConnsPerHost, err := strconv.Atoi(os.Getenv("EXCHANGE_DSPIO_MAX_IDLE_CONNS_PER_HOST"))
+	maxIdleConnsPerHost, err := environ.GetInt("EXCHANGE_DSPIO_MAX_IDLE_CONNS_PER_HOST", 100)
 	if err != nil {
 		logger.Error("main: failed to parse EXCHANGE_DSPIO_MAX_IDLE_CONNS_PER_HOST", slog.Any("error", err))
 		os.Exit(1)
 	}
-	idleConnTimeout, err := time.ParseDuration(os.Getenv("EXCHANGE_DSPIO_IDLE_CONN_TIMEOUT"))
+	idleConnTimeout, err := environ.GetDuration("EXCHANGE_DSPIO_IDLE_CONN_TIMEOUT", 10*time.Second)
 	if err != nil {
 		logger.Error("main: failed to parse EXCHANGE_DSPIO_IDLE_CONN_TIMEOUT", slog.Any("error", err))
 		os.Exit(1)
 	}
-	pool, err := strconv.Atoi(os.Getenv("EXCHANGE_DSPIO_POOL"))
+	keepAlive, err := environ.GetDuration("EXCHANGE_DSPIO_KEEP_ALIVE", 30*time.Second)
+	if err != nil {
+		logger.Error("main: failed to parse EXCHANGE_DSPIO_KEEP_ALIVE", slog.Any("error", err))
+		os.Exit(1)
+	}
+	timeout, err := environ.GetDuration("EXCHANGE_DSPIO_TIMEOUT", 30*time.Second)
+	if err != nil {
+		logger.Error("main: failed to parse EXCHANGE_DSPIO_TIMEOUT", slog.Any("error", err))
+		os.Exit(1)
+	}
+	pool, err := environ.GetInt("EXCHANGE_DSPIO_POOL", 100)
 	if err != nil {
 		logger.Error("main: failed to parse EXCHANGE_DSPIO_POOL", slog.Any("error", err))
 		os.Exit(1)
 	}
 
-	dialer := &net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}
+	insecureSkipVerify, err := environ.GetBool("EXCHANGE_DSPIO_INSECURE_SKIP_VERIFY", true)
+	if err != nil {
+		logger.Error("main: failed to parse EXCHANGE_DSPIO_INSECURE_SKIP_VERIFY", slog.Any("error", err))
+		os.Exit(1)
+	}
+
+	dialer := &net.Dialer{Timeout: timeout, KeepAlive: keepAlive}
 	transport := &http.Transport{
 		MaxIdleConns:        maxIdleConns,
 		MaxIdleConnsPerHost: maxIdleConnsPerHost,
 		IdleConnTimeout:     idleConnTimeout,
 		TLSClientConfig: &tls.Config{
 			ClientSessionCache: tls.NewLRUClientSessionCache(256),
+			InsecureSkipVerify: insecureSkipVerify,
 		},
 		ForceAttemptHTTP2: true,
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
@@ -473,26 +501,34 @@ func main() {
 
 		dsps := cache.state.DSPs.Load()
 		responses := make(chan Out, len(dsps.DSPs))
+		ctx, cancel := context.WithTimeout(r.Context(), 500*time.Millisecond)
+		defer cancel()
+		// Do not close `responses`: DSP IO workers may still send after we return,
+		// and closing here would risk panics ("send on closed channel").
+
+		body, err := json.Marshal(adRequest)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 
 		for i, dsp := range dsps.DSPs {
 			mDSPBeforePerPub.
 				WithLabelValues(strconv.Itoa(dsp.ID), strconv.Itoa(app.Publisher.ID)).
 				Inc()
 
-			body, err := json.Marshal(adRequest)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
 			buf := new(bytes.Buffer)
 			gzw := gzip.NewWriter(buf)
-			defer gzw.Close()
 			if _, err := gzw.Write(body); err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
+			if err := gzw.Close(); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
 
-			req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, dsp.Endpoint, buf)
+			req, err := http.NewRequestWithContext(ctx, http.MethodPost, dsp.Endpoint, buf)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
@@ -513,14 +549,27 @@ func main() {
 				Inc()
 		}
 
-		var bidResponse openrtb.BidResponse
-		for response := range responses {
-			if response.Err != nil {
-				logger.Error("ad: error executing dsp request", slog.Any("error", response.Err))
-				continue
-			}
+		n := len(dsps.DSPs)
+		bidResponses := make([]Out, 0, n)
 
-			bidResponse = response.BidResponse
+	loop:
+		for i := 0; i < n; i++ {
+			select {
+			case out := <-responses:
+				if out.Err == nil {
+					bidResponses = append(bidResponses, out)
+				} else {
+					logger.Error("exchange: error from dsp", slog.Int("dsp_id", out.DSPID), slog.Any("error", out.Err))
+				}
+			case <-ctx.Done():
+				i = n
+				break loop
+			}
+		}
+
+		var bidResponse openrtb.BidResponse
+		if len(bidResponses) > 0 {
+			bidResponse = bidResponses[0].BidResponse
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -540,6 +589,7 @@ func main() {
 		stop()
 
 		cache.Stop()
+		dspio.Stop()
 
 		c, fn := context.WithTimeout(context.Background(), 5*time.Second)
 		defer fn()

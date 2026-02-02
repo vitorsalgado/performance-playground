@@ -1,5 +1,4 @@
 version: '3.9'
-
 name: perf
 
 services:
@@ -14,6 +13,10 @@ services:
         - APP=exchange
     expose:
       - '8080'
+    environment:
+      - EXCHANGE_APPS_CACHE_PATH=/apps.json
+      - EXCHANGE_DSPS_CACHE_PATH=/dsps.json
+      - EXCHANGE_DSPIO_INSECURE_SKIP_VERIFY=true
     deploy:
       mode: replicated
       replicas: 5
@@ -25,6 +28,14 @@ services:
       - grafana
       - alertmanager
       - pyroscope
+      - dsp01
+      - dsp02
+      - dsp03
+      - dsp04
+      - dsp05
+    volumes:
+      - ./d/apps.json:/apps.json:ro
+      - ./d/dsps.json:/dsps.json:ro
     healthcheck:
       test: ['CMD', 'curl', '-f', 'http://localhost:8080/ping']
       interval: 30s
@@ -57,6 +68,69 @@ services:
     labels:
       application: lb
       group: exchange
+
+  # DSPs
+  # These are the DSPs that will be used for performance testing.
+  # --
+
+  dsp01: &dsp
+    build:
+      context: ./
+      args:
+        - APP=dsp
+    container_name: dsp01
+    hostname: dsp01
+    ports:
+      - '8081:8080'
+    environment:
+      - DSP_LATENCY=0
+    depends_on:
+      - vector
+      - victoriametrics
+      - victorialogs
+      - vmalert
+      - grafana
+      - alertmanager
+      - pyroscope
+    labels:
+      application: dsp
+      group: dsp
+
+  dsp02:
+    <<: *dsp
+    container_name: dsp02
+    hostname: dsp02
+    environment:
+      - DSP_LATENCY=5ms
+    ports:
+      - '8082:8080'
+
+  dsp03:
+    <<: *dsp
+    container_name: dsp03
+    hostname: dsp03
+    environment:
+      - DSP_LATENCY=10ms
+    ports:
+      - '8083:8080'
+
+  dsp04:
+    <<: *dsp
+    container_name: dsp04
+    hostname: dsp04
+    environment:
+      - DSP_LATENCY=1s
+    ports:
+      - '8084:8080'
+
+  dsp05:
+    <<: *dsp
+    container_name: dsp05
+    hostname: dsp05
+    environment:
+      - DSP_LATENCY=500ms
+    ports:
+      - '8085:8080'
 
   # Observability (o11y)
   # The observability is based on the VictoriaMetrics stack.

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"log/slog"
 	"net"
@@ -15,6 +16,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/vitorsalgado/ad-tech-performance/internal/openrtb"
+	"github.com/vitorsalgado/ad-tech-performance/internal/testcert"
 )
 
 // Config is the configuration for the DSP.
@@ -41,18 +43,13 @@ func main() {
 	mux := http.NewServeMux()
 	server := &http.Server{Addr: ":8080", Handler: mux, BaseContext: func(l net.Listener) context.Context { return rootCtx }}
 
-	// Graceful shutdown
-	go func() {
-		<-rootCtx.Done()
-		stop()
+	cert, err := tls.X509KeyPair(testcert.LocalhostCert, testcert.LocalhostKey)
+	if err != nil {
+		logger.Error("error creating TLS certificate", slog.Any("error", err))
+		os.Exit(1)
+	}
 
-		c, fn := context.WithTimeout(context.Background(), 5*time.Second)
-		defer fn()
-
-		if err := server.Shutdown(c); err != nil {
-			logger.Error("error during shutdown", slog.Any("error", err))
-		}
-	}()
+	server.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
 
 	mux.HandleFunc("/ping", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("pong")) })
 
@@ -86,9 +83,22 @@ func main() {
 
 	// Starting the HTTP server
 
+	// Graceful shutdown
+	go func() {
+		<-rootCtx.Done()
+		stop()
+
+		c, fn := context.WithTimeout(context.Background(), 5*time.Second)
+		defer fn()
+
+		if err := server.Shutdown(c); err != nil {
+			logger.Error("error during shutdown", slog.Any("error", err))
+		}
+	}()
+
 	logger.Info("starting")
 
-	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+	if err := server.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
 		logger.Error("server error", slog.Any("error", err))
 	}
 }
