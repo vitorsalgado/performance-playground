@@ -553,7 +553,7 @@ func main() {
 		bidResponses := make([]Out, 0, n)
 
 	loop:
-		for i := 0; i < n; i++ {
+		for range n {
 			select {
 			case out := <-responses:
 				if out.Err == nil {
@@ -562,7 +562,6 @@ func main() {
 					logger.Error("exchange: error from dsp", slog.Int("dsp_id", out.DSPID), slog.Any("error", out.Err))
 				}
 			case <-ctx.Done():
-				i = n
 				break loop
 			}
 		}
