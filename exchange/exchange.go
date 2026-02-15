@@ -279,40 +279,69 @@ func (d *DSPIO) Enqueue(in In) {
 	}
 }
 
+func dspResponseStatus(err error, statusCode int) string {
+	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) || strings.Contains(err.Error(), "deadline exceeded") || strings.Contains(err.Error(), "timeout") {
+			return "timeout"
+		}
+		if strings.Contains(err.Error(), "connection refused") || strings.Contains(err.Error(), "connection reset") {
+			return "connection_error"
+		}
+		return "error"
+	}
+	if statusCode == 0 {
+		return "ok"
+	}
+	if statusCode >= 200 && statusCode < 300 {
+		return "ok"
+	}
+	if statusCode >= 400 && statusCode < 500 {
+		return "http_4xx"
+	}
+	if statusCode >= 500 {
+		return "http_5xx"
+	}
+	return "http_other"
+}
+
 // Execute executes the DSP request.
 func (d *DSPIO) Execute(in In) {
 	rateDSPConcurrency.Inc()
 	defer rateDSPConcurrency.Dec()
 
+	start := time.Now()
 	res, err := d.transport.RoundTrip(in.BidRequest)
-	if err != nil {
-		mDSPRequestError.
-			WithLabelValues(strconv.Itoa(in.DSPID)).
-			Inc()
+	elapsed := time.Since(start).Seconds()
+	dspIDStr := strconv.Itoa(in.DSPID)
 
-		in.Responder <- Out{
-			ID:    in.ID,
-			DSPID: in.DSPID,
-			Err:   err,
-		}
+	hDSPRequestDuration.WithLabelValues(dspIDStr).Observe(elapsed)
+
+	statusCode := 0
+	if res != nil {
+		statusCode = res.StatusCode
+		defer res.Body.Close()
+	}
+
+	var status string
+	if err != nil {
+		status = dspResponseStatus(err, statusCode)
+		mDSPResponseStatus.WithLabelValues(dspIDStr, status).Inc()
+		mDSPRequestError.WithLabelValues(dspIDStr).Inc()
+		in.Responder <- Out{ID: in.ID, DSPID: in.DSPID, Err: err}
 		return
 	}
-	defer res.Body.Close()
 
 	var bidResponse openrtb.BidResponse
 	if err = json.NewDecoder(res.Body).Decode(&bidResponse); err != nil {
-		mDSPRequestError.
-			WithLabelValues(strconv.Itoa(in.DSPID)).
-			Inc()
-
-		in.Responder <- Out{
-			ID:    in.ID,
-			DSPID: in.DSPID,
-			Err:   err,
-		}
+		status = "decode_error"
+		mDSPResponseStatus.WithLabelValues(dspIDStr, status).Inc()
+		mDSPRequestError.WithLabelValues(dspIDStr).Inc()
+		in.Responder <- Out{ID: in.ID, DSPID: in.DSPID, Err: err}
 		return
 	}
 
+	status = dspResponseStatus(nil, statusCode)
+	mDSPResponseStatus.WithLabelValues(dspIDStr, status).Inc()
 	in.Responder <- Out{
 		ID:          in.ID,
 		DSPID:       in.DSPID,
@@ -329,6 +358,12 @@ var mDSPRequestTotal = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "ds
 var mDSPRequestDropped = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "dspio_request_dropped_total"}, []string{"dsp_id"})
 var mDSPRequestError = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "dspio_request_error_total"}, []string{"dsp_id"})
 var mDSPConnDialTotal = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "dspio_conn_dial_total"}, []string{"host"})
+var hDSPRequestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+	Name:    "dspio_request_duration_seconds",
+	Help:    "Time spent waiting for DSP bid response.",
+	Buckets: prometheus.ExponentialBuckets(0.001, 2, 14), // 1ms to ~8s
+}, []string{"dsp_id"})
+var mDSPResponseStatus = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "dspio_response_status_total"}, []string{"dsp_id", "status"})
 
 // Ad request metrics.
 var counterTotalAdRequest = prometheus.NewCounter(prometheus.CounterOpts{Name: "ad_request_total"})
@@ -348,6 +383,8 @@ func init() {
 		mDSPRequestDropped,
 		mDSPRequestError,
 		mDSPConnDialTotal,
+		hDSPRequestDuration,
+		mDSPResponseStatus,
 		mTotalAdRequestPerPubAndApp,
 		mDSPBeforePerPub,
 		mDSPAfterPerPub,
@@ -420,16 +457,50 @@ func main() {
 		os.Exit(1)
 	}
 
+	responseHeaderTimeout, err := environ.GetDuration("EXCHANGE_DSPIO_RESPONSE_HEADER_TIMEOUT", 10*time.Second)
+	if err != nil {
+		logger.Error("main: failed to parse EXCHANGE_DSPIO_RESPONSE_HEADER_TIMEOUT", slog.Any("error", err))
+		os.Exit(1)
+	}
+	expectContinueTimeout, err := environ.GetDuration("EXCHANGE_DSPIO_EXPECT_CONTINUE_TIMEOUT", 1*time.Second)
+	if err != nil {
+		logger.Error("main: failed to parse EXCHANGE_DSPIO_EXPECT_CONTINUE_TIMEOUT", slog.Any("error", err))
+		os.Exit(1)
+	}
+	forceHTTP2, err := environ.GetBool("EXCHANGE_DSPIO_FORCE_HTTP2", true)
+	if err != nil {
+		logger.Error("main: failed to parse EXCHANGE_DSPIO_FORCE_HTTP2", slog.Any("error", err))
+		os.Exit(1)
+	}
+	requestTimeout, err := environ.GetDuration("EXCHANGE_DSPIO_REQUEST_TIMEOUT", 500*time.Millisecond)
+	if err != nil {
+		logger.Error("main: failed to parse EXCHANGE_DSPIO_REQUEST_TIMEOUT", slog.Any("error", err))
+		os.Exit(1)
+	}
+
+	logger.Info("main: DSP IO transport config",
+		slog.Duration("dial_timeout", timeout),
+		slog.Duration("keep_alive", keepAlive),
+		slog.Duration("idle_conn_timeout", idleConnTimeout),
+		slog.Duration("response_header_timeout", responseHeaderTimeout),
+		slog.Duration("expect_continue_timeout", expectContinueTimeout),
+		slog.Bool("force_http2", forceHTTP2),
+		slog.Bool("insecure_skip_verify", insecureSkipVerify),
+		slog.Duration("request_timeout", requestTimeout),
+	)
+
 	dialer := &net.Dialer{Timeout: timeout, KeepAlive: keepAlive}
 	transport := &http.Transport{
-		MaxIdleConns:        maxIdleConns,
-		MaxIdleConnsPerHost: maxIdleConnsPerHost,
-		IdleConnTimeout:     idleConnTimeout,
+		MaxIdleConns:          maxIdleConns,
+		MaxIdleConnsPerHost:   maxIdleConnsPerHost,
+		IdleConnTimeout:      idleConnTimeout,
+		ResponseHeaderTimeout: responseHeaderTimeout,
+		ExpectContinueTimeout: expectContinueTimeout,
 		TLSClientConfig: &tls.Config{
 			ClientSessionCache: tls.NewLRUClientSessionCache(256),
 			InsecureSkipVerify: insecureSkipVerify,
 		},
-		ForceAttemptHTTP2: true,
+		ForceAttemptHTTP2: forceHTTP2,
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			c, err := dialer.DialContext(ctx, network, addr)
 			if err != nil {
@@ -499,7 +570,7 @@ func main() {
 
 		dsps := cache.state.DSPs.Load()
 		responses := make(chan Out, len(dsps.DSPs))
-		ctx, cancel := context.WithTimeout(r.Context(), 500*time.Millisecond)
+		ctx, cancel := context.WithTimeout(r.Context(), requestTimeout)
 		defer cancel()
 		// Do not close `responses`: DSP IO workers may still send after we return,
 		// and closing here would risk panics ("send on closed channel").
