@@ -34,7 +34,7 @@ init: ## initialize the project with default configurations
 
 .PHONY: gen-apps
 gen-apps: ## generate d/apps.json from .env APP_COUNT and APP_PUBLISHER_COUNT
-	@node bin/gen-apps.js \
+	@go run ./tools/genapp \
 		--count 500000 \
 		--publisher-count 500 \
 		--start-id 1250 \
@@ -42,7 +42,7 @@ gen-apps: ## generate d/apps.json from .env APP_COUNT and APP_PUBLISHER_COUNT
 
 .PHONY: gen-dsp-config
 gen-dsp-config: ## generate d/dsps.json and d/dsp-latencies.json from .env DSP_COUNT
-	@node bin/gen-dsp-config.js
+	@go run ./tools/gendspconfig
 
 .PHONY: up
 up: ## run everything
