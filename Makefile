@@ -1,11 +1,9 @@
 .ONESHELL:
 .DEFAULT_GOAL := help
 
-# Allow user specific optional overrides
 -include Makefile.overrides
-
-# DSP count and other env; docker-compose reads .env automatically
 -include .env
+
 export
 
 # Terminal styling helpers (ANSI escape codes).
@@ -96,6 +94,14 @@ k6: ## run k6 load tests
 	K6_WEB_DASHBOARD_OPEN=true \
 	K6_WEB_DASHBOARD_EXPORT=./load-testing/report.k6.html \
 	k6 run --summary-export=./load-testing/summary.k6.json ./load-testing/k6.js
+
+## --
+## o11y
+## --
+
+.PHONY: logs-exchange
+logs-exchange: ## show logs for the exchange service (follow mode)
+	@$(DOCKER_COMPOSE) logs -f exchange
 
 ## --
 ## Setup

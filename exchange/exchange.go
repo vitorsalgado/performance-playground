@@ -89,21 +89,25 @@ func NewCache(logger *slog.Logger, plan map[string]CacheLoadFunc) *Cache {
 // Start starts the cache loading process.
 // The cache will periodically reload the data from the underlying data source.
 func (c *Cache) Start(ctx context.Context, interval time.Duration) {
+	go c.worker(ctx, interval)
+
+	c.logger.Info("cache: started", slog.Duration("interval", interval))
+}
+
+func (c *Cache) worker(ctx context.Context, interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-c.done:
-				return
-			case <-ticker.C:
-				c.Load(ctx)
-			}
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-c.done:
+			return
+		case <-ticker.C:
+			c.Load(ctx)
 		}
-	}()
+	}
 }
 
 // Stop stops the cache loading process.
