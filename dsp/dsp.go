@@ -24,16 +24,6 @@ type Config struct {
 	Latency time.Duration
 }
 
-// LatencyByHostname maps each DSP replica hostname to its configured latency.
-// Used when running with docker-compose deploy.replicas; latencies cycle 0, 5ms, 10ms, 1s, 500ms.
-var LatencyByHostname = map[string]time.Duration{
-	"adtech_dsp_1": 0, "adtech_dsp_2": 5 * time.Millisecond, "adtech_dsp_3": 10 * time.Millisecond, "adtech_dsp_4": 1 * time.Second, "adtech_dsp_5": 500 * time.Millisecond,
-	"adtech_dsp_6": 0, "adtech_dsp_7": 5 * time.Millisecond, "adtech_dsp_8": 10 * time.Millisecond, "adtech_dsp_9": 1 * time.Second, "adtech_dsp_10": 500 * time.Millisecond,
-	"adtech_dsp_11": 0, "adtech_dsp_12": 5 * time.Millisecond, "adtech_dsp_13": 10 * time.Millisecond, "adtech_dsp_14": 1 * time.Second, "adtech_dsp_15": 500 * time.Millisecond,
-	"adtech_dsp_16": 0, "adtech_dsp_17": 5 * time.Millisecond, "adtech_dsp_18": 10 * time.Millisecond, "adtech_dsp_19": 1 * time.Second, "adtech_dsp_20": 500 * time.Millisecond,
-	"adtech_dsp_21": 0, "adtech_dsp_22": 5 * time.Millisecond, "adtech_dsp_23": 10 * time.Millisecond, "adtech_dsp_24": 1 * time.Second, "adtech_dsp_25": 500 * time.Millisecond,
-}
-
 func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	config := Config{}
@@ -44,12 +34,31 @@ func main() {
 		os.Exit(1)
 	}
 
-	if latency, ok := LatencyByHostname[hostname]; ok {
-		config.Latency = latency
-		logger.Info("latency from hostname map", slog.String("hostname", hostname), slog.Duration("latency", latency))
-	} else {
+	latenciesPath := os.Getenv("DSP_LATENCIES_PATH")
+	if latenciesPath == "" {
+		latenciesPath = "/latencies.json"
+	}
+	data, err := os.ReadFile(latenciesPath)
+	if err != nil {
+		logger.Info("latencies file not found, using 0", slog.String("path", latenciesPath), slog.String("hostname", hostname))
 		config.Latency = 0
-		logger.Info("hostname not in latency map, using 0", slog.String("hostname", hostname))
+	} else {
+		var latencies map[string]string
+		if err := json.Unmarshal(data, &latencies); err != nil {
+			logger.Error("error parsing latencies JSON", slog.Any("error", err))
+			os.Exit(1)
+		}
+		if s, ok := latencies[hostname]; ok {
+			config.Latency, err = time.ParseDuration(s)
+			if err != nil {
+				logger.Error("error parsing latency duration", slog.String("hostname", hostname), slog.String("value", s), slog.Any("error", err))
+				os.Exit(1)
+			}
+			logger.Info("latency from config", slog.String("hostname", hostname), slog.Duration("latency", config.Latency))
+		} else {
+			config.Latency = 0
+			logger.Info("hostname not in latencies config, using 0", slog.String("hostname", hostname))
+		}
 	}
 
 	rootCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGINT, syscall.SIGTERM)

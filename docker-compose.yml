@@ -60,8 +60,8 @@ services:
       group: exchange
 
   # DSPs
-  # Single service with replicas; each replica is reachable by hostname adtech_dsp_1, adtech_dsp_2, ...
-  # (see d/dsps.json for endpoints used by the exchange).
+  # Replica count from .env DSP_COUNT (run `make gen-dsp-config` after changing).
+  # Each replica is reachable by hostname adtech_dsp_1, adtech_dsp_2, ...
   # --
 
   dsp:
@@ -71,9 +71,11 @@ services:
         - APP=dsp
     deploy:
       mode: replicated
-      replicas: 25
+      replicas: ${DSP_COUNT:-25}
     expose:
       - '8080'
+    volumes:
+      - ./d/dsp-latencies.json:/latencies.json:ro
     depends_on:
       - vector
       - victoriametrics
@@ -122,6 +124,8 @@ services:
       - '-promscrape.config=/etc/vmagent/scrape.yml'
       - '-remoteWrite.url=http://victoriametrics:8428/api/v1/write'
       - '-httpListenAddr=:8429'
+      # Align Docker service discovery with scrape interval to reduce metric gaps
+      - '-promscrape.dockerSDCheckInterval=5s'
     labels:
       application: vmagent
       group: o11y

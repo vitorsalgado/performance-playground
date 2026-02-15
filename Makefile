@@ -4,6 +4,8 @@
 # Allow user specific optional overrides
 -include Makefile.overrides
 
+# DSP count and other env; docker-compose reads .env automatically
+-include .env
 export
 
 # Terminal styling helpers (ANSI escape codes).
@@ -25,11 +27,24 @@ DOCKER_COMPOSE ?= $(shell \
 
 .PHONY: init
 init: ## initialize the project with default configurations
-	@time node bin/gen-apps.js \
-		--count 250000 \
-		--publisher-count 250 \
+	@time make gen-dsp-config
+	@time make gen-apps
+	@printf "\n"
+	@printf "$(bold)%-18s$(reset) $(green)%s$(reset)\n" "Apps:" "d/apps.json"
+	@printf "$(bold)%-18s$(reset) $(green)%s$(reset)\n" "DSPs:" "d/dsps.json"
+	@printf "\n"
+
+.PHONY: gen-apps
+gen-apps: ## generate d/apps.json from .env APP_COUNT and APP_PUBLISHER_COUNT
+	@node bin/gen-apps.js \
+		--count 500000 \
+		--publisher-count 500 \
 		--start-id 1250 \
 		--out d/apps.json
+
+.PHONY: gen-dsp-config
+gen-dsp-config: ## generate d/dsps.json and d/dsp-latencies.json from .env DSP_COUNT
+	@node bin/gen-dsp-config.js
 
 .PHONY: up
 up: ## run everything
@@ -60,8 +75,8 @@ run-exchange: ## run the exchange application
 	go run ./exchange/exchange.go
 
 .PHONY: run-dsp
-run-dsp: ## run the dsp application
-	@DSP_LATENCY=0 go run ./dsp/dsp.go
+run-dsp: ## run the dsp application (uses d/dsp-latencies.json if present, else latency 0)
+	@DSP_LATENCIES_PATH=./d/dsp-latencies.json go run ./dsp/dsp.go
 
 ## --
 ## Testing

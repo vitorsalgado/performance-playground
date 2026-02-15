@@ -32,7 +32,7 @@
             "lineWidth": 2,
             "fillOpacity": 10,
             "showPoints": "never",
-            "spanNulls": false
+            "spanNulls": true
           },
           "mappings": [],
           "min": 0,
@@ -54,7 +54,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sum(rate(process_cpu_seconds_total{job=\"exchange\"}[$__rate_interval]))",
+          "expr": "sum(rate(process_cpu_seconds_total{job=\"exchange\"}[30s]))",
           "legendFormat": "sum",
           "range": true,
           "refId": "A"
@@ -73,7 +73,7 @@
             "lineWidth": 2,
             "fillOpacity": 10,
             "showPoints": "never",
-            "spanNulls": false
+            "spanNulls": true
           },
           "mappings": [],
           "min": 0,
@@ -95,14 +95,14 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "quantile(0.5, rate(process_cpu_seconds_total{job=\"exchange\"}[$__rate_interval]))",
+          "expr": "quantile(0.5, rate(process_cpu_seconds_total{job=\"exchange\"}[30s]))",
           "legendFormat": "p50",
           "range": true,
           "refId": "A"
         },
         {
           "editorMode": "code",
-          "expr": "quantile(0.99, rate(process_cpu_seconds_total{job=\"exchange\"}[$__rate_interval]))",
+          "expr": "quantile(0.99, rate(process_cpu_seconds_total{job=\"exchange\"}[30s]))",
           "legendFormat": "p99",
           "range": true,
           "refId": "B"
@@ -121,7 +121,7 @@
             "lineWidth": 2,
             "fillOpacity": 10,
             "showPoints": "never",
-            "spanNulls": false
+            "spanNulls": true
           },
           "mappings": [],
           "min": 0,
@@ -162,7 +162,7 @@
             "lineWidth": 2,
             "fillOpacity": 10,
             "showPoints": "never",
-            "spanNulls": false
+            "spanNulls": true
           },
           "mappings": [],
           "min": 0,
@@ -210,7 +210,7 @@
             "lineWidth": 2,
             "fillOpacity": 10,
             "showPoints": "never",
-            "spanNulls": false
+            "spanNulls": true
           },
           "mappings": [],
           "min": 0,
@@ -251,7 +251,7 @@
             "lineWidth": 2,
             "fillOpacity": 10,
             "showPoints": "never",
-            "spanNulls": false
+            "spanNulls": true
           },
           "mappings": [],
           "min": 0,
@@ -299,7 +299,7 @@
             "lineWidth": 2,
             "fillOpacity": 10,
             "showPoints": "never",
-            "spanNulls": false
+            "spanNulls": true
           },
           "mappings": [],
           "min": 0,
@@ -340,7 +340,7 @@
             "lineWidth": 2,
             "fillOpacity": 10,
             "showPoints": "never",
-            "spanNulls": false
+            "spanNulls": true
           },
           "mappings": [],
           "min": 0,
@@ -388,7 +388,7 @@
             "lineWidth": 2,
             "fillOpacity": 10,
             "showPoints": "never",
-            "spanNulls": false
+            "spanNulls": true
           },
           "mappings": [],
           "min": 0,
@@ -410,7 +410,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sum(rate(go_memstats_mallocs_total{job=\"exchange\"}[$__rate_interval]))",
+          "expr": "sum(rate(go_memstats_mallocs_total{job=\"exchange\"}[30s]))",
           "legendFormat": "sum",
           "range": true,
           "refId": "A"
@@ -429,7 +429,7 @@
             "lineWidth": 2,
             "fillOpacity": 10,
             "showPoints": "never",
-            "spanNulls": false
+            "spanNulls": true
           },
           "mappings": [],
           "min": 0,
@@ -451,14 +451,14 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "quantile(0.5, rate(go_memstats_mallocs_total{job=\"exchange\"}[$__rate_interval]))",
+          "expr": "quantile(0.5, rate(go_memstats_mallocs_total{job=\"exchange\"}[30s]))",
           "legendFormat": "p50",
           "range": true,
           "refId": "A"
         },
         {
           "editorMode": "code",
-          "expr": "quantile(0.99, rate(go_memstats_mallocs_total{job=\"exchange\"}[$__rate_interval]))",
+          "expr": "quantile(0.99, rate(go_memstats_mallocs_total{job=\"exchange\"}[30s]))",
           "legendFormat": "p99",
           "range": true,
           "refId": "B"
@@ -477,7 +477,7 @@
             "lineWidth": 2,
             "fillOpacity": 10,
             "showPoints": "never",
-            "spanNulls": false
+            "spanNulls": true
           },
           "mappings": [],
           "min": 0,
@@ -499,7 +499,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sum(rate(go_gc_duration_seconds_sum{job=\"exchange\"}[$__rate_interval]))",
+          "expr": "sum(rate(go_gc_duration_seconds_sum{job=\"exchange\"}[30s]))",
           "legendFormat": "sum",
           "range": true,
           "refId": "A"
@@ -518,7 +518,7 @@
             "lineWidth": 2,
             "fillOpacity": 10,
             "showPoints": "never",
-            "spanNulls": false
+            "spanNulls": true
           },
           "mappings": [],
           "min": 0,
