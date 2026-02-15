@@ -175,6 +175,10 @@ services:
       - /var/run:/var/run:rw
       - /sys:/sys:ro
       - /var/lib/docker/:/var/lib/docker:ro
+    # Export Docker Compose labels so Grafana can filter exchange by container_label_com_docker_compose_service
+    command:
+      - -store_container_labels=false
+      - -whitelisted_container_labels=com.docker.compose.service,com.docker.compose.project
     labels:
       application: cadvisor
       group: o11y
