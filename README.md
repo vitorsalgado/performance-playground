@@ -1,1 +1,1 @@
-# ad-tech-performance
+# Performance Playground · [![CI](https://github.com/vitorsalgado/ad-tech-performance/actions/workflows/ci.yml/badge.svg)](https://github.com/vitorsalgado/ad-tech-performance/actions/workflows/ci.yml)

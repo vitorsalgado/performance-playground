@@ -8,7 +8,7 @@ const AD_PATH = __ENV.AD_PATH || '/ad'
 
 // Load profile
 const VUS = Number(__ENV.VUS) || 50
-const DURATION = __ENV.DURATION || '30s'
+const DURATION = __ENV.DURATION || '10m'
 const SLEEP_SECONDS = Number(__ENV.SLEEP_SECONDS) || 0.1
 
 // Randomization bounds (inclusive)
