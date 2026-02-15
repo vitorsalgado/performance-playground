@@ -1,4 +1,4 @@
-FROM golang:1.25.4 as builder
+FROM golang:1.25.4 AS builder
 WORKDIR /src
 
 ARG TARGETOS=linux

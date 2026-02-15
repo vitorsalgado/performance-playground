@@ -24,17 +24,33 @@ type Config struct {
 	Latency time.Duration
 }
 
+// LatencyByHostname maps each DSP replica hostname to its configured latency.
+// Used when running with docker-compose deploy.replicas; latencies cycle 0, 5ms, 10ms, 1s, 500ms.
+var LatencyByHostname = map[string]time.Duration{
+	"adtech_dsp_1": 0, "adtech_dsp_2": 5 * time.Millisecond, "adtech_dsp_3": 10 * time.Millisecond, "adtech_dsp_4": 1 * time.Second, "adtech_dsp_5": 500 * time.Millisecond,
+	"adtech_dsp_6": 0, "adtech_dsp_7": 5 * time.Millisecond, "adtech_dsp_8": 10 * time.Millisecond, "adtech_dsp_9": 1 * time.Second, "adtech_dsp_10": 500 * time.Millisecond,
+	"adtech_dsp_11": 0, "adtech_dsp_12": 5 * time.Millisecond, "adtech_dsp_13": 10 * time.Millisecond, "adtech_dsp_14": 1 * time.Second, "adtech_dsp_15": 500 * time.Millisecond,
+	"adtech_dsp_16": 0, "adtech_dsp_17": 5 * time.Millisecond, "adtech_dsp_18": 10 * time.Millisecond, "adtech_dsp_19": 1 * time.Second, "adtech_dsp_20": 500 * time.Millisecond,
+	"adtech_dsp_21": 0, "adtech_dsp_22": 5 * time.Millisecond, "adtech_dsp_23": 10 * time.Millisecond, "adtech_dsp_24": 1 * time.Second, "adtech_dsp_25": 500 * time.Millisecond,
+}
+
 func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	config := Config{}
 
-	latency, err := time.ParseDuration(os.Getenv("DSP_LATENCY"))
+	hostname, err := os.Hostname()
 	if err != nil {
-		logger.Error("error parsing DSP_LATENCY", slog.Any("error", err))
+		logger.Error("error getting hostname", slog.Any("error", err))
 		os.Exit(1)
 	}
 
-	config.Latency = latency
+	if latency, ok := LatencyByHostname[hostname]; ok {
+		config.Latency = latency
+		logger.Info("latency from hostname map", slog.String("hostname", hostname), slog.Duration("latency", latency))
+	} else {
+		config.Latency = 0
+		logger.Info("hostname not in latency map, using 0", slog.String("hostname", hostname))
+	}
 
 	rootCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

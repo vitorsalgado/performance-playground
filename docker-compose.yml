@@ -1,3 +1,6 @@
+# Fixed project name so DSP replica hostnames are stable: adtech_dsp_1, adtech_dsp_2, ...
+name: adtech
+
 services:
   # Exchange
   # This is the main service that will be used for performance testing.
@@ -15,7 +18,7 @@ services:
       - EXCHANGE_DSPS_CACHE_PATH=/dsps.json
     deploy:
       mode: replicated
-      replicas: 5
+      replicas: 1
     depends_on:
       - vector
       - victoriametrics
@@ -24,11 +27,7 @@ services:
       - grafana
       - alertmanager
       - pyroscope
-      - dsp01
-      - dsp02
-      - dsp03
-      - dsp04
-      - dsp05
+      - dsp
     volumes:
       - ./d/apps.json:/apps.json:ro
       - ./d/dsps.json:/dsps.json:ro
@@ -61,20 +60,20 @@ services:
       group: exchange
 
   # DSPs
-  # These are the DSPs that will be used for performance testing.
+  # Single service with replicas; each replica is reachable by hostname adtech_dsp_1, adtech_dsp_2, ...
+  # (see d/dsps.json for endpoints used by the exchange).
   # --
 
-  dsp01: &dsp
+  dsp:
     build:
       context: ./
       args:
         - APP=dsp
-    container_name: dsp01
-    hostname: dsp01
-    ports:
-      - '8081:8080'
-    environment:
-      - DSP_LATENCY=0
+    deploy:
+      mode: replicated
+      replicas: 25
+    expose:
+      - '8080'
     depends_on:
       - vector
       - victoriametrics
@@ -86,42 +85,6 @@ services:
     labels:
       application: dsp
       group: dsp
-
-  dsp02:
-    <<: *dsp
-    container_name: dsp02
-    hostname: dsp02
-    environment:
-      - DSP_LATENCY=5ms
-    ports:
-      - '8082:8080'
-
-  dsp03:
-    <<: *dsp
-    container_name: dsp03
-    hostname: dsp03
-    environment:
-      - DSP_LATENCY=10ms
-    ports:
-      - '8083:8080'
-
-  dsp04:
-    <<: *dsp
-    container_name: dsp04
-    hostname: dsp04
-    environment:
-      - DSP_LATENCY=1s
-    ports:
-      - '8084:8080'
-
-  dsp05:
-    <<: *dsp
-    container_name: dsp05
-    hostname: dsp05
-    environment:
-      - DSP_LATENCY=500ms
-    ports:
-      - '8085:8080'
 
   # Observability (o11y)
   # The observability is based on the VictoriaMetrics stack.

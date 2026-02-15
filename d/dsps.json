@@ -1,27 +1,27 @@
 [
-    {
-        "id": 1234,
-        "name": "dsp1",
-        "endpoint": "https://dsp01:8080/bid"
-    },
-    {
-        "id": 2345,
-        "name": "dsp2",
-        "endpoint": "https://dsp02:8080/bid"
-    },
-    {
-        "id": 3456,
-        "name": "dsp3",
-        "endpoint": "https://dsp03:8080/bid"
-    },
-    {
-        "id": 4567,
-        "name": "dsp4",
-        "endpoint": "https://dsp04:8080/bid"
-    },
-    {
-        "id": 5678,
-        "name": "dsp5",
-        "endpoint": "https://dsp05:8080/bid"
-    }
+  {"id":1001,"name":"dsp1","endpoint":"https://adtech_dsp_1:8080/bid"},
+  {"id":1002,"name":"dsp2","endpoint":"https://adtech_dsp_2:8080/bid"},
+  {"id":1003,"name":"dsp3","endpoint":"https://adtech_dsp_3:8080/bid"},
+  {"id":1004,"name":"dsp4","endpoint":"https://adtech_dsp_4:8080/bid"},
+  {"id":1005,"name":"dsp5","endpoint":"https://adtech_dsp_5:8080/bid"},
+  {"id":1006,"name":"dsp6","endpoint":"https://adtech_dsp_6:8080/bid"},
+  {"id":1007,"name":"dsp7","endpoint":"https://adtech_dsp_7:8080/bid"},
+  {"id":1008,"name":"dsp8","endpoint":"https://adtech_dsp_8:8080/bid"},
+  {"id":1009,"name":"dsp9","endpoint":"https://adtech_dsp_9:8080/bid"},
+  {"id":1010,"name":"dsp10","endpoint":"https://adtech_dsp_10:8080/bid"},
+  {"id":1011,"name":"dsp11","endpoint":"https://adtech_dsp_11:8080/bid"},
+  {"id":1012,"name":"dsp12","endpoint":"https://adtech_dsp_12:8080/bid"},
+  {"id":1013,"name":"dsp13","endpoint":"https://adtech_dsp_13:8080/bid"},
+  {"id":1014,"name":"dsp14","endpoint":"https://adtech_dsp_14:8080/bid"},
+  {"id":1015,"name":"dsp15","endpoint":"https://adtech_dsp_15:8080/bid"},
+  {"id":1016,"name":"dsp16","endpoint":"https://adtech_dsp_16:8080/bid"},
+  {"id":1017,"name":"dsp17","endpoint":"https://adtech_dsp_17:8080/bid"},
+  {"id":1018,"name":"dsp18","endpoint":"https://adtech_dsp_18:8080/bid"},
+  {"id":1019,"name":"dsp19","endpoint":"https://adtech_dsp_19:8080/bid"},
+  {"id":1020,"name":"dsp20","endpoint":"https://adtech_dsp_20:8080/bid"},
+  {"id":1021,"name":"dsp21","endpoint":"https://adtech_dsp_21:8080/bid"},
+  {"id":1022,"name":"dsp22","endpoint":"https://adtech_dsp_22:8080/bid"},
+  {"id":1023,"name":"dsp23","endpoint":"https://adtech_dsp_23:8080/bid"},
+  {"id":1024,"name":"dsp24","endpoint":"https://adtech_dsp_24:8080/bid"},
+  {"id":1025,"name":"dsp25","endpoint":"https://adtech_dsp_25:8080/bid"}
 ]
