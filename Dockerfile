@@ -8,7 +8,7 @@ ARG APP=exchange
 COPY go.mod go.sum ./
 RUN go mod download && go mod verify
 
-COPY internal ./internal
+COPY libs ./libs
 COPY flavors/adtech/$APP ./flavors/adtech/$APP
 
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \

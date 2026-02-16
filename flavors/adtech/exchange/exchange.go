@@ -24,8 +24,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"golang.org/x/sync/errgroup"
 
-	"perftest/internal/environ"
-	"perftest/internal/openrtb"
+	"perftest/libs/environ"
+	"perftest/libs/openrtb"
 )
 
 // Models
