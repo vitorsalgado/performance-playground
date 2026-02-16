@@ -1,6 +1,6 @@
-// gendspconfig generates d/dsps.json and d/dsp-latencies.json from DSP_COUNT (.env or --count).
-// Latencies cycle: 0, 5ms, 10ms, 1s, 500ms.
-// Usage: gendspconfig [--count <N>] [--out-dsps <path>] [--out-latencies <path>] [--env <path>]
+// gendspconfig generates d/dsps.json from DSP_COUNT (.env or --count).
+// Each DSP entry's latency is read from d/dsp-latencies.json (array by index); missing index → "0".
+// Usage: gendspconfig [--count <N>] [--out-dsps <path>] [--latencies <path>] [--env <path>]
 package main
 
 import (
@@ -14,15 +14,13 @@ import (
 )
 
 const (
-	defaultCount    = 25
-	projectName     = "adtech"
-	dspService      = "dsp"
-	dspPort         = 8080
-	bidPath         = "/bid"
-	latencyCycleLen = 5
+	defaultCount = 25
+	projectName  = "adtech"
+	dspService   = "dsp"
+	dspPort      = 8080
+	bidPath      = "/bid"
+	defaultLatency = "0"
 )
-
-var latencyCycle = [latencyCycleLen]string{"0", "5ms", "10ms", "1s", "500ms"}
 
 func loadEnv(path string) map[string]string {
 	out := make(map[string]string)
@@ -55,19 +53,36 @@ func loadEnv(path string) map[string]string {
 func usage() {
 	fmt.Fprintf(os.Stderr, `
 Usage:
-  gendspconfig [--count <N>] [--out-dsps <path>] [--out-latencies <path>] [--env <path>]
+  gendspconfig [--count <N>] [--out-dsps <path>] [--latencies <path>] [--env <path>]
 
 Options:
-  --count         Number of DSPs (default: from .env DSP_COUNT or %d)
-  --out-dsps      Output path for dsps.json (default: d/dsps.json)
-  --out-latencies Output path for dsp-latencies.json (default: d/dsp-latencies.json)
-  --env           Path to .env file (default: .env in cwd)
-  --help          Show this help
+  --count      Number of DSPs (default: from .env DSP_COUNT or %d)
+  --out-dsps   Output path for dsps.json (default: d/dsps.json)
+  --latencies  Path to dsp-latencies.json array (default: d/dsp-latencies.json); index = DSP index 1..n, missing → "0"
+  --env        Path to .env file (default: .env in cwd)
+  --help       Show this help
 
 Examples:
   gendspconfig
-  gendspconfig --count 10 --out-dsps d/dsps.json --out-latencies d/dsp-latencies.json
+  gendspconfig --count 10 --out-dsps d/dsps.json --latencies d/dsp-latencies.json
 `, defaultCount)
+}
+
+// loadLatencies reads a JSON array of latency strings from path. Missing or invalid file returns nil (all "0").
+func loadLatencies(path string) []string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			fmt.Fprintf(os.Stderr, "gendspconfig: read latencies: %v\n", err)
+		}
+		return nil
+	}
+	var arr []string
+	if err := json.Unmarshal(data, &arr); err != nil {
+		fmt.Fprintf(os.Stderr, "gendspconfig: parse latencies: %v\n", err)
+		return nil
+	}
+	return arr
 }
 
 type DSPEntry struct {
@@ -81,7 +96,7 @@ func main() {
 	cwd, _ := os.Getwd()
 	count := flag.Int("count", -1, "number of DSPs")
 	outDsps := flag.String("out-dsps", filepath.Join(cwd, "d", "dsps.json"), "output path for dsps.json")
-	outLatencies := flag.String("out-latencies", filepath.Join(cwd, "d", "dsp-latencies.json"), "output path for dsp-latencies.json")
+	latenciesPath := flag.String("latencies", filepath.Join(cwd, "d", "dsp-latencies.json"), "path to dsp-latencies.json array")
 	envPath := flag.String("env", filepath.Join(cwd, ".env"), "path to .env")
 	flag.Usage = usage
 	flag.Parse()
@@ -104,41 +119,37 @@ func main() {
 		os.Exit(1)
 	}
 
+	latencies := loadLatencies(*latenciesPath)
+
 	dsps := make([]DSPEntry, 0, n)
-	latencies := make(map[string]string, n)
 
 	for i := 1; i <= n; i++ {
-		hostname := fmt.Sprintf("%s_%s_%d", projectName, dspService, i)
-		latency := latencyCycle[(i-1)%latencyCycleLen]
+		// Match Docker Compose v2 container names (project-service-replica) for DNS resolution.
+		hostname := fmt.Sprintf("%s-%s-%d", projectName, dspService, i)
+		latency := defaultLatency
+		if idx := i - 1; idx < len(latencies) && latencies[idx] != "" {
+			latency = latencies[idx]
+		}
 		dsps = append(dsps, DSPEntry{
 			ID:       1000 + i,
 			Name:     fmt.Sprintf("dsp%d", i),
 			Endpoint: fmt.Sprintf("https://%s:%d%s", hostname, dspPort, bidPath),
 			Latency:  latency,
 		})
-		latencies[hostname] = latency
 	}
 
 	dspsDir := filepath.Dir(*outDsps)
-	latenciesDir := filepath.Dir(*outLatencies)
-	for _, dir := range []string{dspsDir, latenciesDir} {
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			fmt.Fprintf(os.Stderr, "mkdir: %v\n", err)
-			os.Exit(1)
-		}
+	if err := os.MkdirAll(dspsDir, 0755); err != nil {
+		fmt.Fprintf(os.Stderr, "mkdir: %v\n", err)
+		os.Exit(1)
 	}
 
 	dspsJSON, _ := json.MarshalIndent(dsps, "", "  ")
-	latenciesJSON, _ := json.MarshalIndent(latencies, "", "  ")
 
 	if err := os.WriteFile(*outDsps, append(dspsJSON, '\n'), 0644); err != nil {
 		fmt.Fprintf(os.Stderr, "write dsps: %v\n", err)
 		os.Exit(1)
 	}
-	if err := os.WriteFile(*outLatencies, append(latenciesJSON, '\n'), 0644); err != nil {
-		fmt.Fprintf(os.Stderr, "write latencies: %v\n", err)
-		os.Exit(1)
-	}
 
-	fmt.Fprintf(os.Stderr, "gendspconfig: wrote %d DSPs to %s and %s\n", n, *outDsps, *outLatencies)
+	fmt.Fprintf(os.Stderr, "gendspconfig: wrote %d DSPs to %s\n", n, *outDsps)
 }

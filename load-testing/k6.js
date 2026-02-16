@@ -11,9 +11,11 @@ const VUS = Number(__ENV.VUS) || 50
 const DURATION = __ENV.DURATION || '10m'
 const SLEEP_SECONDS = Number(__ENV.SLEEP_SECONDS) || 0.1
 
-// Randomization bounds (inclusive)
-const MAX_PUBLISHER_ID = Number(__ENV.MAX_PUBLISHER_ID) || 250
-const MAX_APP_ID = Number(__ENV.MAX_APP_ID) || 500
+// Randomization bounds (inclusive); lower bound applies to both app and publisher.
+// Defaults align with gen-apps (start-id 1250, publisher-count 500, count 500000).
+const MIN_ID = Number(__ENV.MIN_ID) || 1250
+const MAX_PUBLISHER_ID = Number(__ENV.MAX_PUBLISHER_ID) || 1749   // 1250 + 500 - 1
+const MAX_APP_ID = Number(__ENV.MAX_APP_ID) || 501249             // 1250 + 500000 - 1
 
 export const options = {
   vus: VUS,
@@ -27,10 +29,11 @@ export const options = {
   },
 }
 
-function randIntInclusive(max) {
-  const m = Number(max)
-  if (!Number.isFinite(m) || m <= 1) return 1
-  return Math.floor(Math.random() * m) + 1
+function randIntInclusive(min, max) {
+  const lo = Number(min)
+  const hi = Number(max)
+  if (!Number.isFinite(lo) || !Number.isFinite(hi) || hi < lo) return lo
+  return Math.floor(Math.random() * (hi - lo + 1)) + lo
 }
 
 function makeBidRequest({ appId, publisherId }) {
@@ -78,8 +81,8 @@ function makeBidRequest({ appId, publisherId }) {
 }
 
 export default function () {
-  const publisherId = randIntInclusive(MAX_PUBLISHER_ID)
-  const appId = randIntInclusive(MAX_APP_ID)
+  const publisherId = randIntInclusive(MIN_ID, MAX_PUBLISHER_ID)
+  const appId = randIntInclusive(MIN_ID, MAX_APP_ID)
 
   const url = `${BASE_URL}${AD_PATH}`
   const payload = JSON.stringify(makeBidRequest({ appId, publisherId }))

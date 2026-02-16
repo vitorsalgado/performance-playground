@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/pprof"
+	"net/url"
 	"os"
 	"os/signal"
 	"strconv"
@@ -46,11 +47,12 @@ type Apps struct {
 	Apps map[int]*App
 }
 
-// DSP represents a DSP with its endpoint.
+// DSP represents a DSP with its endpoint and optional latency.
 type DSP struct {
 	ID       int    `json:"id"`
 	Name     string `json:"name"`
 	Endpoint string `json:"endpoint"`
+	Latency  string `json:"latency"`
 }
 
 // DSPs holds a map of DSPs for quick lookup.
@@ -187,6 +189,10 @@ func CacheLoadDSPs(path string) CacheLoadFunc {
 
 		state.DSPs.Store(&DSPs{DSPs: dsps})
 
+		for _, dsp := range dsps {
+			gDSPConfigInfo.WithLabelValues(strconv.Itoa(dsp.ID)).Set(1)
+		}
+
 		logger.Info("cache: loaded dsps", slog.Int("count", len(dsps)))
 
 		return nil
@@ -216,6 +222,7 @@ type Out struct {
 
 // DSPIO represents the actual DSP IO handler.
 type DSPIO struct {
+	logger    *slog.Logger
 	transport *http.Transport
 	pool      int
 	input     chan In
@@ -223,8 +230,9 @@ type DSPIO struct {
 }
 
 // NewDSPIO creates a new DSP IO handler.
-func NewDSPIO(transport *http.Transport, pool int) *DSPIO {
+func NewDSPIO(logger *slog.Logger, transport *http.Transport, pool int) *DSPIO {
 	return &DSPIO{
+		logger:    logger,
 		transport: transport,
 		pool:      pool,
 		input:     make(chan In),
@@ -258,6 +266,8 @@ func (d *DSPIO) Stop() {
 
 // Enqueue enqueues a DSP request to be executed by the background workers.
 func (d *DSPIO) Enqueue(in In) {
+	d.logger.Info("dspio: enqueued request", slog.Int("dsp_id", in.DSPID), slog.Int("id", in.ID))
+
 	mDSPRequestTotal.
 		WithLabelValues(strconv.Itoa(in.DSPID)).
 		Inc()
@@ -279,35 +289,12 @@ func (d *DSPIO) Enqueue(in In) {
 	}
 }
 
-func dspResponseStatus(err error, statusCode int) string {
-	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) || strings.Contains(err.Error(), "deadline exceeded") || strings.Contains(err.Error(), "timeout") {
-			return "timeout"
-		}
-		if strings.Contains(err.Error(), "connection refused") || strings.Contains(err.Error(), "connection reset") {
-			return "connection_error"
-		}
-		return "error"
-	}
-	if statusCode == 0 {
-		return "ok"
-	}
-	if statusCode >= 200 && statusCode < 300 {
-		return "ok"
-	}
-	if statusCode >= 400 && statusCode < 500 {
-		return "http_4xx"
-	}
-	if statusCode >= 500 {
-		return "http_5xx"
-	}
-	return "http_other"
-}
-
 // Execute executes the DSP request.
 func (d *DSPIO) Execute(in In) {
 	rateDSPConcurrency.Inc()
 	defer rateDSPConcurrency.Dec()
+
+	d.logger.Info("dspio: executing request", slog.Int("dsp_id", in.DSPID), slog.Int("id", in.ID))
 
 	start := time.Now()
 	res, err := d.transport.RoundTrip(in.BidRequest)
@@ -316,16 +303,8 @@ func (d *DSPIO) Execute(in In) {
 
 	hDSPRequestDuration.WithLabelValues(dspIDStr).Observe(elapsed)
 
-	statusCode := 0
-	if res != nil {
-		statusCode = res.StatusCode
-		defer res.Body.Close()
-	}
-
-	var status string
 	if err != nil {
-		status = dspResponseStatus(err, statusCode)
-		mDSPResponseStatus.WithLabelValues(dspIDStr, status).Inc()
+		d.logger.Info("dspio: response error", slog.Int("dsp_id", in.DSPID), slog.Int("id", in.ID), slog.Any("error", err))
 		mDSPRequestError.WithLabelValues(dspIDStr).Inc()
 		in.Responder <- Out{ID: in.ID, DSPID: in.DSPID, Err: err}
 		return
@@ -333,15 +312,14 @@ func (d *DSPIO) Execute(in In) {
 
 	var bidResponse openrtb.BidResponse
 	if err = json.NewDecoder(res.Body).Decode(&bidResponse); err != nil {
-		status = "decode_error"
-		mDSPResponseStatus.WithLabelValues(dspIDStr, status).Inc()
+		d.logger.Info("dspio: response decode error", slog.Int("dsp_id", in.DSPID), slog.Int("id", in.ID), slog.Any("error", err))
 		mDSPRequestError.WithLabelValues(dspIDStr).Inc()
 		in.Responder <- Out{ID: in.ID, DSPID: in.DSPID, Err: err}
 		return
 	}
 
-	status = dspResponseStatus(nil, statusCode)
-	mDSPResponseStatus.WithLabelValues(dspIDStr, status).Inc()
+	d.logger.Info("dspio: success", slog.Int("dsp_id", in.DSPID), slog.Int("id", in.ID))
+
 	in.Responder <- Out{
 		ID:          in.ID,
 		DSPID:       in.DSPID,
@@ -363,7 +341,6 @@ var hDSPRequestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 	Help:    "Time spent waiting for DSP bid response.",
 	Buckets: prometheus.ExponentialBuckets(0.001, 2, 14), // 1ms to ~8s
 }, []string{"dsp_id"})
-var mDSPResponseStatus = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "dspio_response_status_total"}, []string{"dsp_id", "status"})
 
 // Ad request metrics.
 var counterTotalAdRequest = prometheus.NewCounter(prometheus.CounterOpts{Name: "ad_request_total"})
@@ -372,6 +349,12 @@ var mTotalAdRequestPerPubAndApp = prometheus.NewCounterVec(prometheus.CounterOpt
 // DSP exchange metrics.
 var mDSPBeforePerPub = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "dsp_before_per_pub_total"}, []string{"dsp_id", "pub_id"})
 var mDSPAfterPerPub = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "dsp_after_per_pub_total"}, []string{"dsp_id", "pub_id"})
+
+// Config info: always-exposed metrics so dashboard variables (e.g. dsp_id) have options before traffic.
+var gDSPConfigInfo = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+	Name: "exchange_dsp_config_info",
+	Help: "Configured DSPs (1 per dsp_id). Used for dashboard label_values so dsp_id variable is populated.",
+}, []string{"dsp_id"})
 
 // Main application logic.
 // --
@@ -384,10 +367,11 @@ func init() {
 		mDSPRequestError,
 		mDSPConnDialTotal,
 		hDSPRequestDuration,
-		mDSPResponseStatus,
+		counterTotalAdRequest,
 		mTotalAdRequestPerPubAndApp,
 		mDSPBeforePerPub,
 		mDSPAfterPerPub,
+		gDSPConfigInfo,
 	)
 }
 
@@ -430,7 +414,7 @@ func main() {
 		logger.Error("main: failed to parse EXCHANGE_DSPIO_MAX_IDLE_CONNS_PER_HOST", slog.Any("error", err))
 		os.Exit(1)
 	}
-	idleConnTimeout, err := environ.GetDuration("EXCHANGE_DSPIO_IDLE_CONN_TIMEOUT", 10*time.Second)
+	idleConnTimeout, err := environ.GetDuration("EXCHANGE_DSPIO_IDLE_CONN_TIMEOUT", 15*time.Second)
 	if err != nil {
 		logger.Error("main: failed to parse EXCHANGE_DSPIO_IDLE_CONN_TIMEOUT", slog.Any("error", err))
 		os.Exit(1)
@@ -491,11 +475,9 @@ func main() {
 
 	dialer := &net.Dialer{Timeout: timeout, KeepAlive: keepAlive}
 	transport := &http.Transport{
-		MaxIdleConns:          maxIdleConns,
-		MaxIdleConnsPerHost:   maxIdleConnsPerHost,
-		IdleConnTimeout:      idleConnTimeout,
-		ResponseHeaderTimeout: responseHeaderTimeout,
-		ExpectContinueTimeout: expectContinueTimeout,
+		MaxIdleConns:        maxIdleConns,
+		MaxIdleConnsPerHost: maxIdleConnsPerHost,
+		IdleConnTimeout:     idleConnTimeout,
 		TLSClientConfig: &tls.Config{
 			ClientSessionCache: tls.NewLRUClientSessionCache(256),
 			InsecureSkipVerify: insecureSkipVerify,
@@ -513,7 +495,7 @@ func main() {
 			return c, nil
 		},
 	}
-	dspio := NewDSPIO(transport, pool)
+	dspio := NewDSPIO(logger, transport, pool)
 	dspio.Start(rootCtx)
 
 	// HTTP endpoints
@@ -597,7 +579,20 @@ func main() {
 				return
 			}
 
-			req, err := http.NewRequestWithContext(ctx, http.MethodPost, dsp.Endpoint, buf)
+			bidURL := dsp.Endpoint
+			if dsp.Latency != "" {
+				u, err := url.Parse(dsp.Endpoint)
+				if err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return
+				}
+				q := u.Query()
+				q.Set("latency", dsp.Latency)
+				u.RawQuery = q.Encode()
+				bidURL = u.String()
+			}
+
+			req, err := http.NewRequestWithContext(ctx, http.MethodPost, bidURL, buf)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return

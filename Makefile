@@ -41,7 +41,7 @@ gen-apps: ## generate d/apps.json from .env APP_COUNT and APP_PUBLISHER_COUNT
 		--out d/apps.json
 
 .PHONY: gen-dsp-config
-gen-dsp-config: ## generate d/dsps.json and d/dsp-latencies.json from .env DSP_COUNT
+gen-dsp-config: ## generate d/dsps.json (with latency per DSP) from .env DSP_COUNT
 	@go run ./tools/gendspconfig
 
 .PHONY: up
@@ -49,7 +49,7 @@ up: ## run everything
 	@$(DOCKER_COMPOSE) up --detach --build --force-recreate
 
 	@printf "\n"
-	@printf "$(bold)%-18s$(reset) $(green)%s$(reset)\n" "Exchange LB:" "http://localhost:8080"
+	@printf "$(bold)%-18s$(reset) $(green)%s$(reset)\n" "Exchange LB:" "http://localhost:9999"
 	@printf "$(bold)%-18s$(reset) $(green)%s$(reset)\n" "VictoriaMetrics:" "http://localhost:8428"
 	@printf "$(bold)%-18s$(reset) $(green)%s$(reset)\n" "VictoriaLogs:" "http://localhost:9428/select/vmui"
 	@printf "$(bold)%-18s$(reset) $(green)%s$(reset)\n" "VictoriaAlert:" "http://localhost:8880/vmalert"
@@ -73,8 +73,8 @@ run-exchange: ## run the exchange application
 	go run ./exchange/exchange.go
 
 .PHONY: run-dsp
-run-dsp: ## run the dsp application (uses d/dsp-latencies.json if present, else latency 0)
-	@DSP_LATENCIES_PATH=./d/dsp-latencies.json go run ./dsp/dsp.go
+run-dsp: ## run the dsp application (latency via exchange querystring or DSP_LATENCY env)
+	@go run ./dsp/dsp.go
 
 ## --
 ## Testing
@@ -88,12 +88,14 @@ testci: ## run tests with a focus on ci
 lint: ## run linters
 	@time golangci-lint run
 
+K6_LOG_FILE ?= ./load-testing/k6.log
+
 .PHONY: k6
-k6: ## run k6 load tests
+k6: ## run k6 load tests (stderr logs in K6_LOG_FILE, default load-testing/k6.log)
 	K6_WEB_DASHBOARD=true \
 	K6_WEB_DASHBOARD_OPEN=true \
 	K6_WEB_DASHBOARD_EXPORT=./load-testing/report.k6.html \
-	k6 run --summary-export=./load-testing/summary.k6.json ./load-testing/k6.js
+	k6 run --summary-export=./load-testing/summary.k6.json ./load-testing/k6.js 2> "$(K6_LOG_FILE)"
 
 ## --
 ## o11y
@@ -102,6 +104,10 @@ k6: ## run k6 load tests
 .PHONY: logs-exchange
 logs-exchange: ## show logs for the exchange service (follow mode)
 	@$(DOCKER_COMPOSE) logs -f exchange
+
+.PHONY: logs-dsp
+logs-dsp: ## show logs for the dsp service (follow mode)
+	@$(DOCKER_COMPOSE) logs -f dsp
 
 ## --
 ## Setup

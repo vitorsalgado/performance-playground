@@ -13,7 +13,7 @@ discovery.relabel "exchange" {
   rule {
     action        = "keep"
     source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
-    regex         = "ad-tech-performance"
+    regex         = "adtech"
   }
 
   rule {

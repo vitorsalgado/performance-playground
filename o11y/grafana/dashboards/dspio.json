@@ -329,13 +329,20 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sum by (status) (rate(dspio_response_status_total{dsp_id=~\"$dsp_id\"}[$__rate_interval]))",
-          "legendFormat": "{{status}}",
+          "expr": "sum(rate(dspio_request_total{dsp_id=~\"$dsp_id\"}[$__rate_interval])) - sum(rate(dspio_request_error_total{dsp_id=~\"$dsp_id\"}[$__rate_interval]))",
+          "legendFormat": "ok",
           "range": true,
           "refId": "A"
+        },
+        {
+          "editorMode": "code",
+          "expr": "sum(rate(dspio_request_error_total{dsp_id=~\"$dsp_id\"}[$__rate_interval]))",
+          "legendFormat": "error",
+          "range": true,
+          "refId": "B"
         }
       ],
-      "title": "Response status rate by outcome",
+      "title": "Response rate by outcome (ok vs error)",
       "type": "timeseries"
     },
     {
@@ -439,6 +446,7 @@
         "type": "datasource"
       },
       {
+        "allValue": ".*",
         "current": { "selected": true, "text": "All", "value": ".*" },
         "hide": 0,
         "includeAll": true,
@@ -446,11 +454,12 @@
         "multi": true,
         "name": "dsp_id",
         "options": [],
-        "query": "label_values(dspio_request_total, dsp_id)",
+        "query": "label_values(exchange_dsp_config_info, dsp_id)",
         "refresh": 1,
         "type": "query"
       },
       {
+        "allValue": ".*",
         "current": { "selected": true, "text": "All", "value": ".*" },
         "hide": 0,
         "includeAll": true,

@@ -1,1 +1,2 @@
 *.json
+!dsp-latencies.json

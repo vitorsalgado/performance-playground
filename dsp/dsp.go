@@ -14,9 +14,12 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
+	"github.com/vitorsalgado/ad-tech-performance/internal/environ"
 	"github.com/vitorsalgado/ad-tech-performance/internal/openrtb"
 	"github.com/vitorsalgado/ad-tech-performance/internal/testcert"
 )
+
+const latencyQueryParam = "latency"
 
 // Config is the configuration for the DSP.
 type Config struct {
@@ -26,39 +29,16 @@ type Config struct {
 
 func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	config := Config{}
 
-	hostname, err := os.Hostname()
+	var config = Config{}
+	var err error
+	config.Latency, err = environ.GetDuration("DSP_LATENCY", 0)
 	if err != nil {
-		logger.Error("error getting hostname", slog.Any("error", err))
+		logger.Error("error parsing DSP_LATENCY", slog.Any("error", err))
 		os.Exit(1)
 	}
-
-	latenciesPath := os.Getenv("DSP_LATENCIES_PATH")
-	if latenciesPath == "" {
-		latenciesPath = "/latencies.json"
-	}
-	data, err := os.ReadFile(latenciesPath)
-	if err != nil {
-		logger.Info("latencies file not found, using 0", slog.String("path", latenciesPath), slog.String("hostname", hostname))
-		config.Latency = 0
-	} else {
-		var latencies map[string]string
-		if err := json.Unmarshal(data, &latencies); err != nil {
-			logger.Error("error parsing latencies JSON", slog.Any("error", err))
-			os.Exit(1)
-		}
-		if s, ok := latencies[hostname]; ok {
-			config.Latency, err = time.ParseDuration(s)
-			if err != nil {
-				logger.Error("error parsing latency duration", slog.String("hostname", hostname), slog.String("value", s), slog.Any("error", err))
-				os.Exit(1)
-			}
-			logger.Info("latency from config", slog.String("hostname", hostname), slog.Duration("latency", config.Latency))
-		} else {
-			config.Latency = 0
-			logger.Info("hostname not in latencies config, using 0", slog.String("hostname", hostname))
-		}
+	if config.Latency > 0 {
+		logger.Info("latency from env", slog.Duration("latency", config.Latency))
 	}
 
 	rootCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
@@ -86,8 +66,14 @@ func main() {
 	// --
 
 	mux.HandleFunc("/bid", func(w http.ResponseWriter, r *http.Request) {
-		if config.Latency > 0 {
-			time.Sleep(config.Latency)
+		latency := config.Latency
+		if s := r.URL.Query().Get(latencyQueryParam); s != "" {
+			if d, err := time.ParseDuration(s); err == nil && d >= 0 {
+				latency = d
+			}
+		}
+		if latency > 0 {
+			time.Sleep(latency)
 		}
 
 		bid := &openrtb.BidResponse{

@@ -1,4 +1,4 @@
-# Fixed project name so DSP replica hostnames are stable: adtech_dsp_1, adtech_dsp_2, ...
+# Project name; DSP replica hostnames match Compose v2 container names: adtech-dsp-1, adtech-dsp-2, ...
 name: adtech
 
 services:
@@ -61,7 +61,7 @@ services:
 
   # DSPs
   # Replica count from .env DSP_COUNT (run `make gen-dsp-config` after changing).
-  # Each replica is reachable by hostname adtech_dsp_1, adtech_dsp_2, ...
+  # Each replica is reachable by hostname adtech-dsp-1, adtech-dsp-2, ... (Compose v2 container names).
   # --
 
   dsp:
@@ -74,8 +74,6 @@ services:
       replicas: ${DSP_COUNT:-25}
     expose:
       - '8080'
-    volumes:
-      - ./d/dsp-latencies.json:/latencies.json:ro
     depends_on:
       - vector
       - victoriametrics
@@ -86,7 +84,7 @@ services:
       - pyroscope
     labels:
       application: dsp
-      group: dsp
+      group: exchange
 
   # Observability (o11y)
   # The observability is based on the VictoriaMetrics stack.
