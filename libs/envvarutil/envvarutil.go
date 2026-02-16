@@ -1,4 +1,4 @@
-package environ
+package envvarutil
 
 import (
 	"os"

@@ -24,7 +24,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"golang.org/x/sync/errgroup"
 
-	"perftest/libs/environ"
+	"perftest/libs/envvarutil"
 	"perftest/libs/openrtb"
 )
 
@@ -385,7 +385,7 @@ func main() {
 
 	// Cache
 	// --
-	cacheUpdateInterval, err := environ.GetDuration("EXCHANGE_CACHE_UPDATE_INTERVAL", 1*time.Minute)
+	cacheUpdateInterval, err := envvarutil.GetDuration("EXCHANGE_CACHE_UPDATE_INTERVAL", 1*time.Minute)
 	if err != nil {
 		logger.Error("main: failed to parse EXCHANGE_CACHE_UPDATE_INTERVAL", slog.Any("error", err))
 		os.Exit(1)
@@ -404,59 +404,59 @@ func main() {
 
 	// DSP IO
 	// --
-	maxIdleConns, err := environ.GetInt("EXCHANGE_DSPIO_MAX_IDLE_CONNS", 100)
+	maxIdleConns, err := envvarutil.GetInt("EXCHANGE_DSPIO_MAX_IDLE_CONNS", 100)
 	if err != nil {
 		logger.Error("main: failed to parse EXCHANGE_DSPIO_MAX_IDLE_CONNS", slog.Any("error", err))
 		os.Exit(1)
 	}
-	maxIdleConnsPerHost, err := environ.GetInt("EXCHANGE_DSPIO_MAX_IDLE_CONNS_PER_HOST", 100)
+	maxIdleConnsPerHost, err := envvarutil.GetInt("EXCHANGE_DSPIO_MAX_IDLE_CONNS_PER_HOST", 100)
 	if err != nil {
 		logger.Error("main: failed to parse EXCHANGE_DSPIO_MAX_IDLE_CONNS_PER_HOST", slog.Any("error", err))
 		os.Exit(1)
 	}
-	idleConnTimeout, err := environ.GetDuration("EXCHANGE_DSPIO_IDLE_CONN_TIMEOUT", 15*time.Second)
+	idleConnTimeout, err := envvarutil.GetDuration("EXCHANGE_DSPIO_IDLE_CONN_TIMEOUT", 15*time.Second)
 	if err != nil {
 		logger.Error("main: failed to parse EXCHANGE_DSPIO_IDLE_CONN_TIMEOUT", slog.Any("error", err))
 		os.Exit(1)
 	}
-	keepAlive, err := environ.GetDuration("EXCHANGE_DSPIO_KEEP_ALIVE", 30*time.Second)
+	keepAlive, err := envvarutil.GetDuration("EXCHANGE_DSPIO_KEEP_ALIVE", 30*time.Second)
 	if err != nil {
 		logger.Error("main: failed to parse EXCHANGE_DSPIO_KEEP_ALIVE", slog.Any("error", err))
 		os.Exit(1)
 	}
-	timeout, err := environ.GetDuration("EXCHANGE_DSPIO_TIMEOUT", 30*time.Second)
+	timeout, err := envvarutil.GetDuration("EXCHANGE_DSPIO_TIMEOUT", 30*time.Second)
 	if err != nil {
 		logger.Error("main: failed to parse EXCHANGE_DSPIO_TIMEOUT", slog.Any("error", err))
 		os.Exit(1)
 	}
-	pool, err := environ.GetInt("EXCHANGE_DSPIO_POOL", 100)
+	pool, err := envvarutil.GetInt("EXCHANGE_DSPIO_POOL", 100)
 	if err != nil {
 		logger.Error("main: failed to parse EXCHANGE_DSPIO_POOL", slog.Any("error", err))
 		os.Exit(1)
 	}
 
-	insecureSkipVerify, err := environ.GetBool("EXCHANGE_DSPIO_INSECURE_SKIP_VERIFY", true)
+	insecureSkipVerify, err := envvarutil.GetBool("EXCHANGE_DSPIO_INSECURE_SKIP_VERIFY", true)
 	if err != nil {
 		logger.Error("main: failed to parse EXCHANGE_DSPIO_INSECURE_SKIP_VERIFY", slog.Any("error", err))
 		os.Exit(1)
 	}
 
-	responseHeaderTimeout, err := environ.GetDuration("EXCHANGE_DSPIO_RESPONSE_HEADER_TIMEOUT", 10*time.Second)
+	responseHeaderTimeout, err := envvarutil.GetDuration("EXCHANGE_DSPIO_RESPONSE_HEADER_TIMEOUT", 10*time.Second)
 	if err != nil {
 		logger.Error("main: failed to parse EXCHANGE_DSPIO_RESPONSE_HEADER_TIMEOUT", slog.Any("error", err))
 		os.Exit(1)
 	}
-	expectContinueTimeout, err := environ.GetDuration("EXCHANGE_DSPIO_EXPECT_CONTINUE_TIMEOUT", 1*time.Second)
+	expectContinueTimeout, err := envvarutil.GetDuration("EXCHANGE_DSPIO_EXPECT_CONTINUE_TIMEOUT", 1*time.Second)
 	if err != nil {
 		logger.Error("main: failed to parse EXCHANGE_DSPIO_EXPECT_CONTINUE_TIMEOUT", slog.Any("error", err))
 		os.Exit(1)
 	}
-	forceHTTP2, err := environ.GetBool("EXCHANGE_DSPIO_FORCE_HTTP2", true)
+	forceHTTP2, err := envvarutil.GetBool("EXCHANGE_DSPIO_FORCE_HTTP2", true)
 	if err != nil {
 		logger.Error("main: failed to parse EXCHANGE_DSPIO_FORCE_HTTP2", slog.Any("error", err))
 		os.Exit(1)
 	}
-	requestTimeout, err := environ.GetDuration("EXCHANGE_DSPIO_REQUEST_TIMEOUT", 500*time.Millisecond)
+	requestTimeout, err := envvarutil.GetDuration("EXCHANGE_DSPIO_REQUEST_TIMEOUT", 500*time.Millisecond)
 	if err != nil {
 		logger.Error("main: failed to parse EXCHANGE_DSPIO_REQUEST_TIMEOUT", slog.Any("error", err))
 		os.Exit(1)

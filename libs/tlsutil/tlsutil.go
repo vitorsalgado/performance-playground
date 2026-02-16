@@ -1,4 +1,4 @@
-package testcert
+package tlsutil
 
 import "strings"
 

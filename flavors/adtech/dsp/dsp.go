@@ -14,9 +14,9 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	"perftest/libs/environ"
+	"perftest/libs/envvarutil"
 	"perftest/libs/openrtb"
-	"perftest/libs/testcert"
+	"perftest/libs/tlsutil"
 )
 
 const latencyQueryParam = "latency"
@@ -32,7 +32,7 @@ func main() {
 
 	var config = Config{}
 	var err error
-	config.Latency, err = environ.GetDuration("DSP_LATENCY", 0)
+	config.Latency, err = envvarutil.GetDuration("DSP_LATENCY", 0)
 	if err != nil {
 		logger.Error("error parsing DSP_LATENCY", slog.Any("error", err))
 		os.Exit(1)
@@ -47,7 +47,7 @@ func main() {
 	mux := http.NewServeMux()
 	server := &http.Server{Addr: ":8080", Handler: mux, BaseContext: func(l net.Listener) context.Context { return rootCtx }}
 
-	cert, err := tls.X509KeyPair(testcert.LocalhostCert, testcert.LocalhostKey)
+	cert, err := tls.X509KeyPair(tlsutil.LocalhostCert, tlsutil.LocalhostKey)
 	if err != nil {
 		logger.Error("error creating TLS certificate", slog.Any("error", err))
 		os.Exit(1)
