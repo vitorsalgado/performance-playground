@@ -9,7 +9,7 @@ COPY go.mod go.sum ./
 RUN go mod download && go mod verify
 
 COPY internal ./internal
-COPY $APP ./$APP
+COPY flavors/adtech/$APP ./flavors/adtech/$APP
 
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
   go build \
@@ -17,7 +17,7 @@ RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
   -buildvcs=false \
   -ldflags="-s -w" \
   -o /out/app \
-  ./$APP
+  ./flavors/adtech/$APP
 
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=builder /out/app /app

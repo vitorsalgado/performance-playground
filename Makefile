@@ -70,11 +70,11 @@ down: ## stop everything
 run-exchange: ## run the exchange application
 	EXCHANGE_APPS_CACHE_PATH=./d/apps.json \
 	EXCHANGE_DSPS_CACHE_PATH=./d/dsps.json \
-	go run ./exchange/exchange.go
+	go run ./flavors/adtech/exchange
 
 .PHONY: run-dsp
 run-dsp: ## run the dsp application (latency via exchange querystring or DSP_LATENCY env)
-	@go run ./dsp/dsp.go
+	@go run ./flavors/adtech/dsp
 
 ## --
 ## Testing

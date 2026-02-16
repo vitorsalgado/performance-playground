@@ -1,4 +1,4 @@
-module github.com/vitorsalgado/ad-tech-performance
+module perftest
 
 go 1.25.4
 

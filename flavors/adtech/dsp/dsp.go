@@ -14,9 +14,9 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	"github.com/vitorsalgado/ad-tech-performance/internal/environ"
-	"github.com/vitorsalgado/ad-tech-performance/internal/openrtb"
-	"github.com/vitorsalgado/ad-tech-performance/internal/testcert"
+	"perftest/internal/environ"
+	"perftest/internal/openrtb"
+	"perftest/internal/testcert"
 )
 
 const latencyQueryParam = "latency"
