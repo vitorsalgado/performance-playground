@@ -46,7 +46,7 @@ gen-dsp-config: ## generate d/dsps.json (with latency per DSP) from .env DSP_COU
 
 .PHONY: up
 up: ## run everything
-	@$(DOCKER_COMPOSE) up --detach --build --force-recreate
+	@$(DOCKER_COMPOSE) up --detach
 
 	@printf "\n"
 	@printf "$(bold)%-18s$(reset) $(green)%s$(reset)\n" "Exchange LB:" "http://localhost:9999"
@@ -59,12 +59,16 @@ up: ## run everything
 	@printf "\n"
 
 .PHONY: up-attached
-up-attached: ## run everything attached
-	@$(DOCKER_COMPOSE) up --build --force-recreate
+up-renewed: ## run everything with renewed containers
+	@$(DOCKER_COMPOSE) up --detach --build --force-recreate
 
 .PHONY: down
 down: ## stop everything
-	@$(DOCKER_COMPOSE) down --remove-orphans --volumes
+	@$(DOCKER_COMPOSE) down
+
+.PHONY: rm
+rm: ## remove all containers and volumes
+	@$(DOCKER_COMPOSE) down --remove-orphans --volumes --rmi all
 
 .PHONY: run-exchange
 run-exchange: ## run the exchange application
