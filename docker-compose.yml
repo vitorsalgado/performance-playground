@@ -16,6 +16,7 @@ services:
     environment:
       - EXCHANGE_APPS_CACHE_PATH=/apps.json
       - EXCHANGE_DSPS_CACHE_PATH=/dsps.json
+      - EXCHANGE_INTERN_STRINGS=false
     deploy:
       mode: replicated
       replicas: 1

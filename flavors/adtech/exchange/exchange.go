@@ -426,7 +426,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	useInternStrings, err := envvarutil.GetBool("EXCHANGE_INTERN_STRINGS", true)
+	useInternStrings, err := envvarutil.GetBool("EXCHANGE_INTERN_STRINGS", false)
 	if err != nil {
 		logger.Error("main: failed to parse EXCHANGE_INTERN_STRINGS", slog.Any("error", err))
 		os.Exit(1)
