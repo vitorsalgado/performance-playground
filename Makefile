@@ -11,6 +11,12 @@ reset := \033[0m
 bold  := \033[1m
 green := \033[32m
 
+GRAFANA_URL ?= http://localhost:3000
+GRAFANA_ADMIN_USER ?= admin
+GRAFANA_ADMIN_PASSWORD ?= admin
+
+K6_LOG_FILE ?= ./load-testing/k6.log
+
 # Prefer "docker compose" (plugin) but support legacy "docker-compose".
 # Can be overridden via env/CLI, e.g. `make up DOCKER_COMPOSE=docker-compose`.
 DOCKER_COMPOSE ?= $(shell \
@@ -46,7 +52,7 @@ gen-dsp-config: ## generate d/dsps.json (with latency per DSP) from .env DSP_COU
 
 .PHONY: up
 up: ## run everything
-	@$(DOCKER_COMPOSE) up --detach
+	@$(DOCKER_COMPOSE) up --detach --build
 
 	@printf "\n"
 	@printf "$(bold)%-18s$(reset) $(green)%s$(reset)\n" "Exchange LB:" "http://localhost:9999"
@@ -92,8 +98,6 @@ testci: ## run tests with a focus on ci
 lint: ## run linters
 	@time golangci-lint run
 
-K6_LOG_FILE ?= ./load-testing/k6.log
-
 .PHONY: k6
 k6: ## run k6 load tests (stderr logs in K6_LOG_FILE, default load-testing/k6.log)
 	K6_WEB_DASHBOARD=true \
@@ -124,10 +128,6 @@ deps: ## dependencies
 ## --
 ## Grafana
 ## --
-
-GRAFANA_URL ?= http://localhost:3000
-GRAFANA_ADMIN_USER ?= admin
-GRAFANA_ADMIN_PASSWORD ?= admin
 
 .PHONY: grafana-dashboards-reload
 grafana-dashboards-reload: ## reload provisioned Grafana dashboards (no container restart)

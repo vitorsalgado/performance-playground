@@ -25,6 +25,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"perftest/libs/envvarutil"
+	"perftest/libs/intern"
 	"perftest/libs/openrtb"
 )
 
@@ -144,7 +145,8 @@ func (c *Cache) Load(ctx context.Context) error {
 }
 
 // CacheLoadApps loads the apps from the given path.
-func CacheLoadApps(path string) CacheLoadFunc {
+// It creates new in-memory objects instead of reusing the unmarshalled structs.
+func CacheLoadApps(path string, useIntern bool) CacheLoadFunc {
 	return func(state *State, logger *slog.Logger) error {
 		f, err := os.Open(path)
 		if err != nil {
@@ -153,27 +155,44 @@ func CacheLoadApps(path string) CacheLoadFunc {
 
 		defer f.Close()
 
-		var apps []App
-		if err = json.NewDecoder(f).Decode(&apps); err != nil {
+		var decoded []App
+		if err = json.NewDecoder(f).Decode(&decoded); err != nil {
 			return err
 		}
 
-		appMap := make(map[int]*App, len(apps))
-		for i := range apps {
-			app := apps[i]
-			appMap[app.ID] = &app
+		appMap := make(map[int]*App, len(decoded))
+		for i := range decoded {
+			src := &decoded[i]
+			app := &App{
+				ID:   src.ID,
+				Name: src.Name,
+			}
+			if useIntern {
+				app.Name = intern.InternString(app.Name)
+			}
+			if src.Publisher != nil {
+				app.Publisher = &Publisher{
+					ID:   src.Publisher.ID,
+					Name: src.Publisher.Name,
+				}
+				if useIntern {
+					app.Publisher.Name = intern.InternString(app.Publisher.Name)
+				}
+			}
+			appMap[app.ID] = app
 		}
 
 		state.Apps.Store(&Apps{Apps: appMap})
 
-		logger.Info("cache: loaded apps", slog.Int("count", len(apps)))
+		logger.Info("cache: loaded apps", slog.Int("count", len(decoded)))
 
 		return nil
 	}
 }
 
 // CacheLoadDSPs loads the DSPs from the given path.
-func CacheLoadDSPs(path string) CacheLoadFunc {
+// It creates new in-memory objects instead of reusing the unmarshalled structs.
+func CacheLoadDSPs(path string, useIntern bool) CacheLoadFunc {
 	return func(state *State, logger *slog.Logger) error {
 		f, err := os.Open(path)
 		if err != nil {
@@ -182,9 +201,25 @@ func CacheLoadDSPs(path string) CacheLoadFunc {
 
 		defer f.Close()
 
-		var dsps []*DSP
-		if err = json.NewDecoder(f).Decode(&dsps); err != nil {
+		var decoded []*DSP
+		if err = json.NewDecoder(f).Decode(&decoded); err != nil {
 			return err
+		}
+
+		dsps := make([]*DSP, len(decoded))
+		for i, src := range decoded {
+			dsp := &DSP{
+				ID:       src.ID,
+				Name:     src.Name,
+				Endpoint: src.Endpoint,
+				Latency:  src.Latency,
+			}
+			if useIntern {
+				dsp.Name = intern.InternString(dsp.Name)
+				dsp.Endpoint = intern.InternString(dsp.Endpoint)
+				dsp.Latency = intern.InternString(dsp.Latency)
+			}
+			dsps[i] = dsp
 		}
 
 		state.DSPs.Store(&DSPs{DSPs: dsps})
@@ -391,9 +426,15 @@ func main() {
 		os.Exit(1)
 	}
 
+	useInternStrings, err := envvarutil.GetBool("EXCHANGE_INTERN_STRINGS", true)
+	if err != nil {
+		logger.Error("main: failed to parse EXCHANGE_INTERN_STRINGS", slog.Any("error", err))
+		os.Exit(1)
+	}
+
 	plan := make(map[string]CacheLoadFunc, 2)
-	plan["apps"] = CacheLoadApps(os.Getenv("EXCHANGE_APPS_CACHE_PATH"))
-	plan["dsps"] = CacheLoadDSPs(os.Getenv("EXCHANGE_DSPS_CACHE_PATH"))
+	plan["apps"] = CacheLoadApps(os.Getenv("EXCHANGE_APPS_CACHE_PATH"), useInternStrings)
+	plan["dsps"] = CacheLoadDSPs(os.Getenv("EXCHANGE_DSPS_CACHE_PATH"), useInternStrings)
 
 	cache := NewCache(logger, plan)
 	if err := cache.Load(rootCtx); err != nil {
