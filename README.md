@@ -1,4 +1,4 @@
-# Performance Playground · [![CI](https://github.com/vitorsalgado/ad-tech-performance/actions/workflows/ci.yml/badge.svg)](https://github.com/vitorsalgado/ad-tech-performance/actions/workflows/ci.yml) · ![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/vitorsalgado/performance-playground)
+# Performance Playground · [![CI](https://github.com/vitorsalgado/ad-tech-performance/actions/workflows/ci.yml/badge.svg)](https://github.com/vitorsalgado/ad-tech-performance/actions/workflows/ci.yml) · ![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/vitorsalgado/performance-playground) · ![GitHub License](https://img.shields.io/github/license/vitorsalgado/performance-playground)
 
 This project offers a "playground" where users can run performance experiments.  
 It implements a very simple ad exchange like system with a complete observability stack already set.  
