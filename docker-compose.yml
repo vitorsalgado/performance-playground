@@ -1,4 +1,3 @@
-# Project name; DSP replica hostnames match Compose v2 container names: adtech-dsp-1, adtech-dsp-2, ...
 name: adtech
 
 services:
