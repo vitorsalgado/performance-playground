@@ -2,7 +2,7 @@
 
 This project offers a "playground" where users can run performance experiments.  
 It implements a very simple ad exchange like system with a complete observability stack already set.  
-The experiment application was intentionally developed with some known inefficiencies, so we can play around, experiment, and see the actual impact in the system metrics.
+The app and stack are kept simple on purpose; some known inefficiencies are intentional so that changes show up clearly in metrics.
 
 ## Getting Started
 
